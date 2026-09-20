@@ -30,6 +30,7 @@ class Stage(str, Enum):
     RESEARCH = "research"
     FACT_CHECK = "fact_check"
     SCRIPT_GENERATION = "script_generation"
+    SCRIPT_QA = "script_qa"
     SCENE_PLANNING = "scene_planning"
     PRODUCTION = "production"
     VIDEO_GENERATION = "video_generation"

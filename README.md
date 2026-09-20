@@ -5,18 +5,21 @@ script, plans a scene-by-scene production, generates video on a GPU
 worker, assembles the final YouTube Short, and eventually publishes it —
 end to end.
 
-> **Status: scaffold only.** No agents, no API calls, no video generation,
-> and no scheduling yet. This project currently defines the structure and
-> a minimal entry point.
+> **Status: implementing, stage by stage.** Five content stages are
+> implemented with deterministic, network-free mock providers: topic
+> selection, research, fact checking, script generation, and script QA.
+> Video generation, publishing, and analytics are not implemented yet.
 
 ## Long-term pipeline
 
 ```
 topic discovery
 → SEO research
-→ topic selection / scoring
-→ research
-→ script generation
+→ topic selection / scoring          Stage 1 ✅ implemented
+→ research                           Stage 2 ✅ implemented
+→ fact checking                      Stage 3 ✅ implemented
+→ script generation                  Stage 4 ✅ implemented
+→ script QA                           Stage 5 ✅ implemented
 → scene planning
 → production JSON
 → Google Colab video generation (GPU worker)
@@ -50,30 +53,35 @@ topic discovery
 ## Repository layout
 
 ```
-agents/            Future agent modules (research, seo, script, scene_planner, qa)
-pipeline/          Orchestrator and per-run state model
+agents/            Implemented stage agents (seo, research, qa/fact_checker, script) + future ones
+pipeline/          Orchestrator scaffold and per-run state model
 video/             Future video build steps (generation, editing, subtitles, audio)
-data/              Working artifacts per run (research, scripts, production, videos)
+data/              Working artifacts per run + committed mock fixtures under data/mock/
 prompts/           Prompt templates per agent
 config/            Configuration (populated later; secrets go in .env)
-tests/             Tests (added with the first implemented stage)
+tests/             Test suite for the implemented stages (346 passing)
 ```
 
 ## Current development stage
 
-Only the initial foundation exists:
+Implemented stages (all deterministic, mock-backed, offline):
 
-- `pipeline/state.py` — minimal serializable run state (stage tracking,
-  artifact registry, save/load).
-- `pipeline/orchestrator.py` — minimal entry point that creates a fresh
-  run directory and a state file, then stops.
-- Directory skeleton, `.env.example`, `.gitignore`, and a minimal
-  `requirements.txt`.
+- **Stage 1 — Topic Selection** (`agents/seo/`): signal-scored topic
+  candidates + selection.
+- **Stage 2 — Research** (`agents/research/`): evidence-backed claims +
+  sources, provenance.
+- **Stage 3 — Fact Checking** (`agents/qa/fact_checker/`): per-claim
+  PASS/REVIEW/REJECT gating; `approved_claims` is what downstream may use.
+- **Stage 4 — Script Generation** (`agents/script/`): approved claims only
+  → validated 30–60s Short script with per-line claim traceability.
+- **Stage 5 — Script QA** (`agents/qa/script/`): deterministic quality
+  control (13 checks, 9 hard gates, weighted score) → PASS / REVISE /
+  REJECT with actionable issues; never rewrites the script.
 
-Implementations to come: each agent stage, the GPU worker contract,
-video assembly, quality checks, publishing, and analytics.
+Not yet implemented: scene planning, video generation, voice/audio, video
+assembly, publishing, analytics.
 
-## Running the minimal project
+## Running the implemented stages
 
 Requires Python 3.10+.
 
@@ -84,17 +92,24 @@ python -m venv .venv
 
 pip install -r requirements.txt
 
-# start a new run
-python -m pipeline.orchestrator
+# run per-stage demos against deterministic mock data:
+python -m agents.seo.topic_selector          # Stage 1: topic selection
+python -m agents.research.research_agent     # Stage 2: research package
+python -m agents.qa.fact_checker             # Stage 3: fact check
+python -m agents.script.script_generator     # Stage 4: script generation
+python -m agents.qa.script                   # Stage 5: script QA
+
+# run the whole test suite (346 tests passing)
+python -m pytest tests -q
 ```
 
-This creates `data/<run_id>/` (with `research/`, `scripts/`, `production/`,
-`videos/` subdirectories) and writes ``state.json`` for the run.
+Each CLI writes its artifact under `data/<run_id>/` and records run state
+in `state.json`.
 
 ## Design documentation
 
-The technical design is documented in `docs/` (design only — no
-implementation beyond the scaffold below):
+The technical design is documented in `docs/`. Stages 1–5 are implemented;
+the video-generation and marketplace docs remain design-only:
 
 | Doc | Covers |
 |---|---|

@@ -50,9 +50,10 @@ Analytics
 Topic Selection feedback loop
 ```
 
-The first **three** stages are implemented (Topic Selection = Stage 1,
-Research = Stage 2, Fact Checking = Stage 3). Everything below Fact Checking
-is design-only documentation until implemented.
+The first **five** stages are implemented (Topic Selection = Stage 1,
+Research = Stage 2, Fact Checking = Stage 3, Script Generation = Stage 4,
+Script QA = Stage 5). Everything below Script QA is design-only documentation
+until implemented.
 
 ## Stage 1 — Topic Selection
 
@@ -196,11 +197,12 @@ design-only assumptions and match the implemented contracts):
 
 `docs/DATA_CONTRACTS.md` is the authoritative contract reference for every
 artifact shape (`Source`, `FactClaim`, `ResearchPackage`, `TopicCandidate`,
-`TopicSelection`, ...).
+`TopicSelection`, `FactCheckResult`, `Script`, ...).
 
 ## Current verification
 
-Full suite: **201 tests passing** (42 Stage 1 + 80 Stage 2 + 79 Stage 3).
+Full suite: **346 tests passing** (42 Stage 1 + 80 Stage 2 + 79 Stage 3 +
+53 Stage 4 + 92 Stage 5).
 
 ## Stage 3 — Fact Checking
 
@@ -246,12 +248,122 @@ Implemented components:
 `python -m agents.qa.fact_checker` (writes `data/<run_id>/research/fact_check_result.json`
 + run state).
 
+## Stage 4 — Script Generation
+
+**Status:** COMPLETE
+
+**Implementation location:** `agents/script/`
+
+Implemented components:
+
+- `ScriptLine` / `Script` — versioned Stage-4 artifact (`models.py`), id
+  `sc_<sha1(run_id:topic_id)[:12]>`, lines `ln_00, ln_01, ...`
+- `ScriptGenerator` protocol + `MockScriptGenerator` — deterministic,
+  network-free generator (`script_generator.py`); the future LLM boundary
+- `ScriptConfig` — wpm / duration bounds / min approved claims /
+  `allow_review_content` (`script_generator.py`)
+- `validate_script` — deterministic validator (`validator.py`): factual
+  lines must carry `claim_refs` to approved claims only; REVIEW/REJECT /
+  unknown / unapproved refs rejected; exact used/unused approved-claim
+  tracking; token-coverage semantic check; hedge preservation; no
+  unsupported certainty strengthening; duration bounds
+- `run_script_generation` + `approved_claims` whitelist join (`stage.py`)
+- CLI `python -m agents.script.script_generator`
+  (writes `data/<run_id>/scripts/script.json` + run state)
+- Mock fixture `data/mock/fact_check_result.json` — deterministic MOCK
+  result authoring 3 approved octopus claims for script demos (clearly
+  marked MOCK; claim 4 stays REVIEW, claim 5 stays REJECT)
+
+### Behavior
+
+- Consumes ONLY `FactCheckResult.approved_claims`; rejected/REVIEW claims
+  are never materialized (the generator re-filters even if handed the full
+  package — defense in depth).
+- Package `REJECT` → `blocked`; package `REVIEW` → `blocked` unless
+  `allow_review_content`; too few approved claims or too-short material →
+  structured `insufficient_content` (never invents filler).
+- Lines: hook (approved claim, curiosity-framed), context (topic title
+  bridge), one near-verbatim line per approved claim (purpose from claim
+  type), transition/CTA (inert boilerplate), conclusion (restates the first
+  claim's payload, with refs).
+- Duration estimated deterministically: Σ line words ÷ wpm × 60
+  (default 150 wpm); target 30–60s.
+- Documented policy: `docs/DATA_CONTRACTS.md` §8.
+
+### Test status
+
+53 Stage 4 tests (`tests/test_script_models.py`,
+`tests/test_script_generator.py`, `tests/test_script_validator.py`, plus
+`tests/script_test_utils.py` builders). CLI:
+`python -m agents.script.script_generator`.
+
+## Stage 5 — Script QA
+
+**Status:** COMPLETE
+
+**Implementation location:** `agents/qa/script/`
+
+Implemented components:
+
+- `QAIssue` / `ClaimCoverage` / `QACheckRecord` / `ScriptQAConfig` /
+  `ScriptQAResult` — versioned Stage-5 artifact (`models.py`); issue ids
+  `qa_00, qa_01, ...`, result id `sqa_<sha1(run_id:script_id)[:12]>`; 13 QA
+  categories; 10 scoring dimensions under `QA_DIMENSIONS`; documented
+  `DEFAULT_SCORE_WEIGHTS` (sum = 1)
+- 13 deterministic check functions, no LLM, no network (`checks.py`):
+  factual fidelity, claim traceability, claim coverage, length/duration,
+  pacing, clarity, repetition, structure, hook quality, uncertainty
+  preservation, misleading language, CTA quality, format/Shorts suitability;
+  registered in `CHECKS` for independent rule additions
+- Verdict rules (`validator.py`): any severity-ERROR issue with `gate=hard`
+  → **REJECT**; any soft ERROR → **REVISE**; otherwise → **PASS**. The 9 hard
+  gates cover: no factual traceability; REJECTED/REVIEW/unknown claim refs;
+  material contradiction; certainty strengthening; invented factual detail;
+  empty/unusable script; package not approved for scripting
+- Deterministic weighted quality score (`scorer.py`):
+  dimension = `clamp(100 - penalties, 0, 100)`; ERROR −45 hard / −20 soft,
+  WARNING −6, INFO −1; overall = weighted mean rounded to 1dp; score is an
+  internal quality number, never a performance prediction
+- Coverage accounting — `approved_claim_coverage`: ratio + used/unused/
+  critical-unused ids; only *critical* unused claims create requirements
+- `evaluate_script` deliberately does NOT call `script.validate()`: Stage 5
+  is a gate over arbitrary artifacts, so corrupt inputs produce issues rather
+  than exceptions
+- `run_script_qa` + whitelist join `approved_claims` (same as Stage 4) +
+  `generate_mock_script` (`stage.py`); CLI `python -m agents.qa.script`
+  (writes `data/<run_id>/scripts/script_qa_result.json` + run state advanced
+  to `Stage.SCRIPT_QA`)
+- Mock fixture `data/mock/script.json` — deterministic MOCK Script artifact
+  (45.2s, 3 approved claims used, clean PASS at score 100.0)
+
+### Behavior
+
+- QA never re-runs research and never consults unapproved claims as fact:
+  the approved claims from Stage 3 remain the factual source of truth.
+- QA never rewrites the script — it emits the verdict plus actionable
+  issues/warnings/infos with line/claim ids for a future revision agent.
+- Uncertainty preservation is a hard gate and a dedicated score dimension:
+  dropping a hedge or adding unsupported certainty words silently changes a
+  claim's meaning.
+- Intentional hook/conclusion reinforcement and repeat of the first claim are
+  NOT flagged as repetition failures.
+- Optimized phrase/hedge/negation sets are disjoint so a single word is never
+  double-reported at two severities; `appears`/`seems` count as hedges only
+  when followed by "to".
+- Documented policy: `docs/DATA_CONTRACTS.md` §8.1.
+
+### Test status
+
+92 Stage 5 tests (`tests/test_script_qa_models.py`,
+`tests/test_script_qa_checks.py`, `tests/test_script_qa_scorer.py`,
+`tests/test_script_qa_validator.py`, `tests/test_script_qa_stage.py`, plus
+`tests/script_qa_test_utils.py` builders). CLI:
+`python -m agents.qa.script`.
+
 ## Future stages
 
 Planned, **not implemented**:
 
-- Stage 4 — Script Generation
-- Stage 5 — Script QA
 - Stage 6 — Scene Planning
 - Stage 7 — Production / Colab Video Generation
 - Stage 8 — Video QA
@@ -316,14 +428,18 @@ STAGE 2 COMPLETE (Research Pipeline)
     ↓
 STAGE 3 COMPLETE (Fact Checking)
     ↓
-STAGE 4 SCRIPT GENERATION IS NEXT
+STAGE 4 COMPLETE (Script Generation)
+    ↓
+STAGE 5 COMPLETE (Script QA)
+    ↓
+STAGE 6 SCENE PLANNING IS NEXT
 ```
 
-Current verification: 201 tests passing.
+Current verification: 346 tests passing.
 
-The next implementation task is **"Implement Stage 4 — Script Generation"** —
-do not implement it now. It may consume the `FactCheckResult.approved_claims`
-only.
+The next implementation task is **"Implement Stage 6 — Scene Planning"** --
+do not implement it now. Stage 6 consumes the QA-passed `Script` artifact
+(and its `ScriptQAResult`) to plan per-scene visuals, shots, and captions.
 
 ## How to continue
 
@@ -332,7 +448,7 @@ only.
 3. Read `docs/DATA_CONTRACTS.md`.
 4. Read `docs/FACT_VERIFICATION.md`.
 5. Confirm the current test suite passes
-   (`python -m pytest tests -q` — expect 201 passing).
-6. Continue with Stage 4 only.
+   (`python -m pytest tests -q` — expect 346 passing).
+6. Continue with Stage 6 only.
 7. Do not redo completed stages unless a concrete bug is discovered.
 8. Do not rely on previous OpenCode conversation history.

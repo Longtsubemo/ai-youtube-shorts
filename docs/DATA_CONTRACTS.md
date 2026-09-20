@@ -392,31 +392,210 @@ list is provided by an `EvidenceProvider` (mock fixture
 
 ## 8. Script
 
-Line-level traceability: every line references the claims it relies on.
+**Implemented** (`agents/script/`). Stage 4 turns a `FactCheckResult` into a
+30–60s short-form explainer script. Its only factual input is the fact-check
+result's `approved_claims` (joined against the research package) — rejected,
+REVIEW, and unlisted claims can never appear as fact (`FACT_VERIFICATION.md`,
+"consumption boundary").
+
+Envelope follows §1. Example (`data/<run_id>/scripts/script.json`):
 
 ```json
 {
-  "script_id": "sc_01J..",
-  "run_id": "1c34504001b0",
-  "title": "Why CRISPR edits the right genes, mostly",
-  "hook": "Bacteria keep a mugshot of every virus they ever fought.",
-  "lines": [
-    {
-      "line_id": "ln_01",
-      "text": "Bacteria keep mugshots of past viruses in their DNA.",
-      "claim_refs": ["cl_01J.."],
-      "duration_ms": 3200
+  "schema": "Script",
+  "schema_version": 1,
+  "created_at": "2026-09-20T16:31:21+00:00",
+  "run_id": "sc-demo",
+  "stage": "script_generation",
+  "produced_by": { "prompt_version": null, "provider": null, "model": "MockScriptGenerator" },
+  "data": {
+    "script_id": "sc_41d39e3980db",
+    "topic_id": "t_octopus_hearts",
+    "topic_title": "Why octopuses have three hearts",
+    "title": "Why octopuses have three hearts",
+    "hook": "You probably didn't know this, but Octopuses have three hearts",
+    "estimated_duration_seconds": 45.2,
+    "used_claim_ids": ["cl_97628e259b", "cl_b4ca50a10d", "cl_f6089873c8"],
+    "unused_approved_claim_ids": [],
+    "result_id": "fc_41e052643b3a",
+    "package_id": "rp_9fc41d7a46b7",
+    "lines": [
+      {
+        "line_id": "ln_00",
+        "text": "You probably didn't know this, but Octopuses have three hearts",
+        "claim_refs": ["cl_b4ca50a10d"],
+        "purpose": "hook",
+        "estimated_duration_seconds": 4.0
+      },
+      {
+        "line_id": "ln_02",
+        "text": "Octopuses have three hearts: two branchial hearts that push blood through the gills and a systemic heart that powers the body.",
+        "claim_refs": ["cl_b4ca50a10d"],
+        "purpose": "fact",
+        "estimated_duration_seconds": 8.4
+      }
+    ],
+    "provenance": {
+      "generated_by": "script_agent_v1",
+      "source": "MockScriptGenerator",
+      "created_at": "2026-09-20T16:31:21+00:00",
+      "provider": null,
+      "model": "MockScriptGenerator",
+      "prompt_version": null
     }
-  ],
-  "estimated_duration_ms": 42000,
-  "format_constraints": "30-60s vertical short"
+  }
 }
 ```
 
-- `lines` are chronological narration. `claim_refs` enable the audit
-  chain: script sentence -> claim_id -> research claim -> source_id ->
-  original source.
-- `duration_ms` estimates inform scene planning.
+- `lines` are chronological narration. `purpose` in `hook` / `context` /
+  `explanation` / `fact` / `transition` / `conclusion` / `call_to_action`.
+- `claim_refs` enable the audit chain:
+  `script line -> claim_id -> research claim -> source_id -> original source`.
+- **Factual lines** (`fact`, `explanation`, `conclusion`) MUST carry
+  `claim_refs` pointing at approved claims only; framing lines
+  (`hook`/`context`/`transition`/`call_to_action`) are boilerplate and carry
+  none.
+- `used_claim_ids` + `unused_approved_claim_ids` split the result's
+  `approved_claims` exactly (disjoint, together equal `approved_claims`), so
+  reviewers can see what was consumed and what was left out.
+- `estimated_duration_seconds` = Σ line word counts ÷ `words_per_minute` × 60
+  (default 150 wpm), target 30–60s.
+- IDs are deterministic: `sc_<sha1(run_id:topic_id)[:12]>`, lines
+  `ln_00, ln_01, ...`.
+- Validation (see `validate_script`) additionally enforces: no
+  REVIEW/REJECT/unapproved refs, no referencing claims missing from the
+  result, token-coverage (factual lines stay inside their claims' wording),
+  preserved hedges, no unsupported certainty strengthening, duration bounds.
+
+CLI: `python -m agents.script.script_generator` (writes
+`data/<run_id>/scripts/script.json` + run state). Gate/failure behavior:
+package `REJECT` → `blocked`; package `REVIEW` → `blocked` unless
+`allow_review_content`; too few approved claims or too-short material →
+structured `insufficient_content` result (never inventing filler).
+
+## 8.1 ScriptQAResult (Script QA)
+
+**Implemented** (`agents/qa/script/`). Stage 5 is quality control over the
+Stage-4 `Script` artifact — it is NOT another research/fact-finding stage. Its
+only factual input is (a) the `Script`, (b) the `FactCheckResult`, and (c) the
+**approved claim records** via the same whitelist join as Stage 4
+(`approved_claims`). It never re-runs research, never consults unapproved
+claims as fact, and never rewrites the script: it emits a verdict plus
+actionable issues for a future revision agent.
+
+Example (`data/<run_id>/scripts/script_qa_result.json`):
+
+```json
+{
+  "schema": "ScriptQAResult",
+  "schema_version": 1,
+  "created_at": "2026-09-20T12:00:00.000000+00:00",
+  "run_id": "sqa-demo",
+  "stage": "script_qa",
+  "produced_by": { "prompt_version": null, "provider": null, "model": "ScriptQAValidator" },
+  "data": {
+    "qa_result_id": "sqa_3df00a38bf37",
+    "script_id": "sc_9fc41d7a46b7",
+    "topic_id": "t_octopus_hearts",
+    "result_id": "fc_41e052643b3a",
+    "package_id": "rp_9fc41d7a46b7",
+    "overall_verdict": "PASS",
+    "score": 100.0,
+    "score_detail": {
+      "score": 100.0,
+      "dimensions": { "factual_fidelity": 100.0, "uncertainty": 100.0, "traceability": 100.0,
+                      "coverage": 100.0, "clarity": 100.0, "structure": 100.0, "pacing": 100.0,
+                      "hook": 100.0, "repetition": 100.0, "format": 100.0 },
+      "weights": { "factual_fidelity": 0.2, "uncertainty": 0.15, "traceability": 0.15,
+                   "clarity": 0.1, "structure": 0.1, "pacing": 0.1, "hook": 0.05,
+                   "coverage": 0.05, "repetition": 0.05, "format": 0.05 }
+    },
+    "checks": [ { "check": "factual_fidelity", "category": "factual_fidelity", "dimension": "factual_fidelity",
+                  "hard_gate": true, "errors": 0, "warnings": 0, "infos": 0, "passed": true } ],
+    "issues": [],
+    "warnings": [],
+    "infos": [],
+    "approved_claim_coverage": {
+      "approved_claim_ids": ["cl_97628e259b", "cl_b4ca50a10d", "cl_f6089873c8"],
+      "used_claim_ids": ["cl_97628e259b", "cl_b4ca50a10d", "cl_f6089873c8"],
+      "unused_approved_claim_ids": [],
+      "critical_unused_claim_ids": [],
+      "coverage_ratio": 1.0
+    },
+    "provenance": {
+      "generated_by": "script_qa_agent_v1",
+      "source": "DeterministicScriptQA",
+      "created_at": "2026-09-20T12:00:00.000000+00:00",
+      "provider": null,
+      "model": "ScriptQAValidator",
+      "prompt_version": "script_qa.v1"
+    }
+  }
+}
+```
+
+- **Verdict:** `REJECT` if any severity-ERROR issue is a HARD gate; `REVISE`
+  if any (soft) severity-ERROR issue exists; otherwise `PASS`
+  (warnings/INFO only, or fully clean). Warnings and INFO can never alone
+  cause failure.
+- **13 check categories:** `factual_fidelity`, `claim_traceability`,
+  `claim_coverage`, `length_duration`, `pacing`, `clarity`, `repetition`,
+  `structure`, `hook_quality`, `uncertainty_preservation`,
+  `misleading_language`, `cta_quality`, `format_shorts`. Each issue carries
+  `category`, `severity` (`ERROR`/`WARNING`/`INFO`), `gate`
+  (`hard`/`soft`), `dimension`, `check`, and affected line/claim ids for the
+  audit chain.
+- **9 hard gates** (each is a `gate=hard` ERROR → REJECT):
+  1. no factual traceability (factual line without claim refs)
+  2. references a REJECTED claim
+  3. references a REVIEW (unapproved) claim
+  4. references an unknown claim id
+  5. material contradiction (negation never said by the approved claims)
+  6. material certainty strengthening (unsupported certainty word, hard gate)
+  7. invented factual detail (token coverage below the 0.5 threshold)
+  8. empty / structurally unusable script
+  9. package not approved for scripting (package verdict REJECT or REVIEW)
+- **Score (internal quality, NOT a performance prediction):**
+  `dimension = clamp(100 − penalties, 0, 100)`; ERROR hard −45, ERROR soft −20,
+  WARNING −6, INFO −1; `overall = round(weighted mean, 1)`. Default weights
+  (sum = 1): factual_fidelity 0.20, uncertainty 0.15, traceability 0.15,
+  clarity 0.10, structure 0.10, pacing 0.10, hook 0.05, coverage 0.05,
+  repetition 0.05, format 0.05. Configurable via `ScriptQAConfig.validate()`
+  (weights must cover exactly the 10 dimensions and sum to 1).
+- **Coverage:** `approved_claim_coverage.coverage_ratio` = used ∕ approved.
+  Non-critical unused claims are allowed (INFO). A *critical* unused claim is
+  an ERROR by default (`critical_unused_is_error`); relaxed to a WARNING when
+  configured.
+- **Deterministic heuristics worth knowing** (all in `checks.py`):
+  - Duration: <15s or >90s → hard ERROR; <30s or >60s → WARNING.
+  - Line pacing: >45 words → ERROR (soft gate), >30 → WARNING; >2 sentences
+    with >20 words, or ≥5 connectors → WARNING; >90-word uninterrupted
+    explanation block → WARNING; >35 words of setup before the first fact →
+    WARNING.
+  - Clarity: sentence >25 words, unexplained acronym (`[A-Z]{2,6}`), term
+    >18 chars, >4 parentheses, or a factual line opening with
+    it/they/this/that/these/those/there → WARNING.
+  - Repetition: identical or near-duplicate (Jaccard ≥ 0.8, non-adjacent)
+    factual statements in two body lines → WARNING. Hook/conclusion
+    reinforcement and reusing the opening claim are intentional and only INFO.
+  - Uncertainty: hedged claims must keep their hedge; dropping it or adding a
+    certainty word neither claim ever says → hard ERROR. `appears`/`seems`
+    count as hedges only when followed by `to` (so "blood appears blue" is not
+    treated as hedged).
+  - Misleading/clickbait phrasing → WARNING (never fatal by itself); CTA
+    missing → INFO only; long/duplicated/reference-free hook or CTA →
+    WARNING.
+  - Format: <3 or >14 lines, a >160-character line, >20 avg words/line, or
+    >150 total words → WARNING.
+- Deliberately does NOT call `script.validate()`: corrupt artifacts are
+  reported as issues instead of raising, so QA can gate a broken input.
+- IDs: `sqa_<sha1(run_id:script_id)[:12]>`; issue ids `qa_00, qa_01, ...`
+  assigned in deterministic check order.
+
+CLI: `python -m agents.qa.script` (writes
+`data/<run_id>/scripts/script_qa_result.json` + run state advanced to
+`Stage.SCRIPT_QA`). Config live in `ScriptQAConfig` /
+`agents/qa/script/models.py` and are documented above.
 
 ## 9. ScenePlan
 
@@ -484,6 +663,11 @@ The stable content-to-video contract (`VIDEO_PIPELINE.md` §3).
 - `output` is the worker's deliverable contract.
 
 ## 11. QAResult
+
+Design-time placeholder for generic quality-gate results. **Implemented so
+far: `ScriptQAResult` (§8.1).** This generic shape is reserved for the future
+video/policy QA stages; those stages will likely reuse §8.1's issue/severity/
+gate model.
 
 Used by any QA stage (`script` / `video` / `policy`).
 

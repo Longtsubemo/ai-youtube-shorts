@@ -1,0 +1,169 @@
+{
+  "schema": "FactCheckResult",
+  "schema_version": 1,
+  "created_at": "2026-09-20T12:00:00.000000+00:00",
+  "run_id": "mock",
+  "stage": "fact_check",
+  "produced_by": {
+    "prompt_version": null,
+    "provider": "MockEvidenceProvider",
+    "model": "MockVerifier"
+  },
+  "data": {
+    "result_id": "fc_41e052643b3a",
+    "topic_id": "t_octopus_hearts",
+    "topic_title": "Why octopuses have three hearts",
+    "package_id": "rp_9fc41d7a46b7",
+    "package_verdict": "PASS",
+    "claim_results": [
+      {
+        "claim_id": "cl_b4ca50a10d",
+        "verdict": "PASS",
+        "evidence_ids": [
+          "ev_56b649a6e9",
+          "ev_9155cf348b"
+        ],
+        "supporting_source_ids": [
+          "src_34ce4eb949"
+        ],
+        "contradiction_source_ids": [],
+        "rationale": "evidence examined: ev_56b649a6e9, ev_9155cf348b; supporting sources: src_34ce4eb949; contradicting sources: none",
+        "confidence": 0.85,
+        "critical": false,
+        "checks_performed": [
+          "coverage_max=1.00",
+          "stance_overall=direct",
+          "strong_in_claim=none",
+          "strong_in_evidence=no",
+          "hedged_in_evidence=yes",
+          "contradiction_present=no",
+          "discovery_only=no",
+          "speculation_as_fact=no"
+        ],
+        "verifier": "MockVerifier"
+      },
+      {
+        "claim_id": "cl_f6089873c8",
+        "verdict": "PASS",
+        "evidence_ids": [
+          "ev_56b649a6e9",
+          "ev_9155cf348b"
+        ],
+        "supporting_source_ids": [
+          "src_34ce4eb949"
+        ],
+        "contradiction_source_ids": [],
+        "rationale": "evidence examined: ev_56b649a6e9, ev_9155cf348b; supporting sources: src_34ce4eb949; contradicting sources: none evidence covers only part of the claim's exact wording [MOCK FIXTURE: residual wording variance waived so the script stage has >=2 approved claims for the demo; not real review output]",
+        "confidence": 0.65,
+        "critical": false,
+        "checks_performed": [
+          "coverage_max=0.50",
+          "stance_overall=partial",
+          "strong_in_claim=none",
+          "strong_in_evidence=no",
+          "hedged_in_evidence=yes",
+          "contradiction_present=no",
+          "discovery_only=no",
+          "speculation_as_fact=no"
+        ],
+        "verifier": "MockVerifier"
+      },
+      {
+        "claim_id": "cl_97628e259b",
+        "verdict": "PASS",
+        "evidence_ids": [
+          "ev_2392068451",
+          "ev_51508c35d4"
+        ],
+        "supporting_source_ids": [
+          "src_21df285abb"
+        ],
+        "contradiction_source_ids": [],
+        "rationale": "evidence examined: ev_2392068451, ev_51508c35d4; supporting sources: src_21df285abb; contradicting sources: none",
+        "confidence": 0.6,
+        "critical": false,
+        "checks_performed": [
+          "coverage_max=1.00",
+          "stance_overall=direct",
+          "strong_in_claim=none",
+          "strong_in_evidence=no",
+          "hedged_in_evidence=yes",
+          "contradiction_present=no",
+          "discovery_only=no",
+          "speculation_as_fact=no"
+        ],
+        "verifier": "MockVerifier"
+      },
+      {
+        "claim_id": "cl_5011c6e956",
+        "verdict": "REVIEW",
+        "evidence_ids": [
+          "ev_2392068451",
+          "ev_51508c35d4"
+        ],
+        "supporting_source_ids": [],
+        "contradiction_source_ids": [
+          "src_21df285abb"
+        ],
+        "rationale": "evidence examined: ev_2392068451, ev_51508c35d4; supporting sources: none; contradicting sources: src_21df285abb credible contradictory evidence present",
+        "confidence": 0.3,
+        "critical": false,
+        "checks_performed": [
+          "coverage_max=0.80",
+          "stance_overall=contradictory",
+          "strong_in_claim=none",
+          "strong_in_evidence=no",
+          "hedged_in_evidence=no",
+          "contradiction_present=yes",
+          "discovery_only=no",
+          "speculation_as_fact=no"
+        ],
+        "verifier": "MockVerifier"
+      },
+      {
+        "claim_id": "cl_963d7d9d93",
+        "verdict": "REJECT",
+        "evidence_ids": [
+          "ev_85db6ee713"
+        ],
+        "supporting_source_ids": [],
+        "contradiction_source_ids": [],
+        "rationale": "evidence examined: ev_85db6ee713; supporting sources: none; contradicting sources: none claim is speculation/opinion, not a settled fact",
+        "confidence": 0.3,
+        "critical": false,
+        "checks_performed": [
+          "coverage_max=0.36",
+          "stance_overall=insufficient",
+          "strong_in_claim=none",
+          "strong_in_evidence=no",
+          "hedged_in_evidence=no",
+          "contradiction_present=no",
+          "discovery_only=no",
+          "speculation_as_fact=yes"
+        ],
+        "verifier": "MockVerifier"
+      }
+    ],
+    "critical_claim_failures": [],
+    "review_items": [
+      "cl_5011c6e956"
+    ],
+    "rejected_claims": [
+      "cl_963d7d9d93"
+    ],
+    "approved_claims": [
+      "cl_b4ca50a10d",
+      "cl_f6089873c8",
+      "cl_97628e259b"
+    ],
+    "evidence_issues": [],
+    "provenance": {
+      "generated_by": "fact_check_agent_v1",
+      "source": "MockEvidenceProvider:MockVerifier",
+      "created_at": "2026-09-20T12:00:00.000000+00:00",
+      "provider": null,
+      "model": "MockVerifier",
+      "prompt_version": null
+    }
+  }
+}

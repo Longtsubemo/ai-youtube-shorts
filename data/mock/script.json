@@ -1,0 +1,104 @@
+{
+  "schema": "Script",
+  "schema_version": 1,
+  "created_at": "2026-09-20T12:00:00.000000+00:00",
+  "run_id": "mock",
+  "stage": "script_generation",
+  "produced_by": {
+    "prompt_version": null,
+    "provider": null,
+    "model": "MockScriptGenerator"
+  },
+  "data": {
+    "script_id": "sc_9fc41d7a46b7",
+    "topic_id": "t_octopus_hearts",
+    "topic_title": "Why octopuses have three hearts",
+    "title": "Why octopuses have three hearts",
+    "hook": "You probably didn't know this, but Octopuses have three hearts",
+    "estimated_duration_seconds": 45.2,
+    "used_claim_ids": [
+      "cl_97628e259b",
+      "cl_b4ca50a10d",
+      "cl_f6089873c8"
+    ],
+    "unused_approved_claim_ids": [],
+    "result_id": "fc_41e052643b3a",
+    "package_id": "rp_9fc41d7a46b7",
+    "lines": [
+      {
+        "line_id": "ln_00",
+        "text": "You probably didn't know this, but Octopuses have three hearts",
+        "claim_refs": [
+          "cl_b4ca50a10d"
+        ],
+        "purpose": "hook",
+        "estimated_duration_seconds": 4.0
+      },
+      {
+        "line_id": "ln_01",
+        "text": "Why octopuses have three hearts? Let's take a closer look at the answer.",
+        "claim_refs": [],
+        "purpose": "context",
+        "estimated_duration_seconds": 5.2
+      },
+      {
+        "line_id": "ln_02",
+        "text": "Octopuses have three hearts: two branchial hearts that push blood through the gills and a systemic heart that powers the body.",
+        "claim_refs": [
+          "cl_b4ca50a10d"
+        ],
+        "purpose": "fact",
+        "estimated_duration_seconds": 8.4
+      },
+      {
+        "line_id": "ln_03",
+        "text": "While octopuses swim, the two branchial hearts stop beating because the body diverts oxygen to the systemic heart.",
+        "claim_refs": [
+          "cl_f6089873c8"
+        ],
+        "purpose": "explanation",
+        "estimated_duration_seconds": 7.2
+      },
+      {
+        "line_id": "ln_04",
+        "text": "Octopus blood uses copper-based hemocyanin, which means their blood appears blue.",
+        "claim_refs": [
+          "cl_97628e259b"
+        ],
+        "purpose": "explanation",
+        "estimated_duration_seconds": 4.4
+      },
+      {
+        "line_id": "ln_05",
+        "text": "Here's one more detail worth knowing.",
+        "claim_refs": [],
+        "purpose": "transition",
+        "estimated_duration_seconds": 2.4
+      },
+      {
+        "line_id": "ln_06",
+        "text": "So here's the bottom line: two branchial hearts that push blood through the gills and a systemic heart that powers the body.",
+        "claim_refs": [
+          "cl_b4ca50a10d"
+        ],
+        "purpose": "conclusion",
+        "estimated_duration_seconds": 8.8
+      },
+      {
+        "line_id": "ln_07",
+        "text": "If you enjoyed this, follow for more science explainers like this one.",
+        "claim_refs": [],
+        "purpose": "call_to_action",
+        "estimated_duration_seconds": 4.8
+      }
+    ],
+    "provenance": {
+      "generated_by": "script_agent_v1",
+      "source": "MockScriptGenerator",
+      "created_at": "2026-09-20T12:00:00.000000+00:00",
+      "provider": null,
+      "model": "MockScriptGenerator",
+      "prompt_version": null
+    }
+  }
+}
