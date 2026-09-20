@@ -35,6 +35,14 @@ data/videos/*
 *.mp3
 *.m4a
 
+# Per-run generated artifacts (data/<run_id>/...) - keep mock + static dirs tracked
+data/*/
+!data/mock/
+!data/research/
+!data/scripts/
+!data/production/
+!data/videos/
+
 # Notebooks (Colab scratch)
 .ipynb_checkpoints/
 *.ipynb

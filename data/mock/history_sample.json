@@ -1,0 +1,28 @@
+[
+  {
+    "video_id": "vid_mock_0001",
+    "topic_id": "t_octopus_hearts",
+    "pillar": "science",
+    "topic_type": "surprising_fact",
+    "views": 5200,
+    "retention": 0.58,
+    "likes": 340,
+    "comments": 41,
+    "shares": 22,
+    "subscribers_gained": 12,
+    "published_at": "2026-08-18T20:00:00+00:00"
+  },
+  {
+    "video_id": "vid_mock_0002",
+    "topic_id": "t_black_hole",
+    "pillar": "space",
+    "topic_type": "scientific_concept",
+    "views": 3100,
+    "retention": 0.51,
+    "likes": 210,
+    "comments": 30,
+    "shares": 15,
+    "subscribers_gained": 8,
+    "published_at": "2026-08-25T20:00:00+00:00"
+  }
+]

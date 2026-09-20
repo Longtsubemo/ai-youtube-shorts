@@ -2,3 +2,7 @@
 # No AI-provider SDKs are added yet; they come in with the agent stages.
 
 python-dotenv>=1.0,<2
+
+# Stage 1 - topic discovery / selection
+pyyaml>=6.0,<7          # config/topic_selection.yaml
+pytest>=7.0,<9          # test suite

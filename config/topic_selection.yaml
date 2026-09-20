@@ -1,0 +1,63 @@
+# Topic selection configuration - Stage 1.
+#
+# The scorer/selector read this file; values are NOT hard-coded in Python.
+version: 1
+
+scoring:
+  # Fixed/semantic interpretation = OBJECTIVE/EXTERNAL signals vs
+  # CONTENT evaluation signals are carried separately on each candidate
+  # (see agents/seo/models.py). These weights mix the two intentionally:
+  #   external: interest, trend_momentum, competition
+  #   content:  curiosity, explainer_potential, visual_potential, audience_fit
+  weights:
+    interest: 0.20
+    trend_momentum: 0.15
+    competition: 0.15
+    curiosity: 0.15
+    explainer_potential: 0.15
+    visual_potential: 0.10
+    audience_fit: 0.10
+  # freshness is recorded on the candidate as a signal but is intentionally
+  # NOT part of the base weighted score (no weight listed above).
+  competition:
+    # Competition is interpreted as an OPPORTUNITY signal:
+    # more competition -> less opportunity, by default.
+    interpretation: opportunity
+    # transformation is isolated in agents/seo/competition.py so a more
+    # sophisticated competition/opportunity model can replace it later.
+    transformation: inverse
+  historical:
+    # Historical performance contributes to total_score only when a
+    # historical_fit value exists for a candidate AND this is enabled.
+    enabled: true
+    # PLACEHOLDER weight - provisional, configurable, NOT a tuned value.
+    # Actual blend is decided after enough real analytics accrue.
+    weight: 0.25
+
+selection:
+  # Fraction of selections that will EXPLORE when history is available.
+  exploration_fraction: 0.3
+  # Deterministic RNG seed for Exploration. Change `seed` to vary picks;
+  # keep it stable for reproducible behavior in tests/CI.
+  seed: 42
+  # Exploration considers the top-N scored candidates before picking.
+  top_n: 3
+  # Per-already-covered-pillar penalty applied during exploration.
+  coverage_penalty: 0.25
+
+pillars:
+  - ai
+  - technology
+  - science
+  - space
+  - curiosity
+
+topic_types:
+  - evergreen
+  - trending
+  - recent_discovery
+  - historical
+  - surprising_fact
+  - technology_development
+  - scientific_concept
+  - unusual_phenomenon

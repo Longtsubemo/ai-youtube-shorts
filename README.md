@@ -91,6 +91,24 @@ python -m pipeline.orchestrator
 This creates `data/<run_id>/` (with `research/`, `scripts/`, `production/`,
 `videos/` subdirectories) and writes ``state.json`` for the run.
 
+## Design documentation
+
+The technical design is documented in `docs/` (design only — no
+implementation beyond the scaffold below):
+
+| Doc | Covers |
+|---|---|
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, pipeline stages, resumability, replaceability boundaries |
+| [CONTENT_STRATEGY.md](docs/CONTENT_STRATEGY.md) | Channel identity, pillars, fixed 30–60 s story format |
+| [TOPIC_SELECTION.md](docs/TOPIC_SELECTION.md) | External signals, cold start, exploration/exploitation |
+| [RESEARCH_PIPELINE.md](docs/RESEARCH_PIPELINE.md) | Evidence-backed claims, source hierarchy, claim/source/date model |
+| [FACT_VERIFICATION.md](docs/FACT_VERIFICATION.md) | Separate fact-check stage: PASS/REVIEW/REJECT gating |
+| [POLICY_AND_SAFETY.md](docs/POLICY_AND_SAFETY.md) | YouTube policy checks, human approval gate |
+| [VIDEO_PIPELINE.md](docs/VIDEO_PIPELINE.md) | Shorts target, production.json interface, Colab worker + swaps |
+| [DATA_CONTRACTS.md](docs/DATA_CONTRACTS.md) | The 10 versioned JSON contracts and artifact envelope |
+| [MODEL_STRATEGY.md](docs/MODEL_STRATEGY.md) | Abstract model interface; coding model vs. production LLMs |
+| [ANALYTICS.md](docs/ANALYTICS.md) | Future analytics interface feeding topic selection |
+
 ## Roadmap
 
 1. Topic discovery and SEO research

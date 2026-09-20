@@ -1,0 +1,234 @@
+[
+  {
+    "topic_id": "t_ai_agents_computers",
+    "title": "How AI agents actually use computers",
+    "description": "Explainer: AI agents observe a screen, decide an action, and execute it step by step. Internal mock candidate, not researched.",
+    "pillar": "ai",
+    "topic_type": "evergreen",
+    "signals": {
+      "interest": 0.80,
+      "trend_momentum": 0.60,
+      "competition": 0.60,
+      "freshness": 0.10
+    },
+    "content_scores": {
+      "curiosity": 0.70,
+      "explainer_potential": 0.85,
+      "visual_potential": 0.60,
+      "audience_fit": 0.85
+    },
+    "historical_fit": null,
+    "total_score": null,
+    "provenance": {
+      "generated_by": "mock_catalog_v1",
+      "source": "internal_mock",
+      "created_at": "2026-09-20T00:00:00+00:00",
+      "provider": null,
+      "model": null,
+      "prompt_version": null
+    }
+  },
+  {
+    "topic_id": "t_noise_cancellation",
+    "title": "How does noise cancellation actually work?",
+    "description": "Explainer: microphones capture ambient sound, invert the wave, and cancel it before it reaches your ear. Internal mock candidate.",
+    "pillar": "technology",
+    "topic_type": "technology_development",
+    "signals": {
+      "interest": 0.70,
+      "trend_momentum": 0.40,
+      "competition": 0.50,
+      "freshness": 0.10
+    },
+    "content_scores": {
+      "curiosity": 0.60,
+      "explainer_potential": 0.80,
+      "visual_potential": 0.80,
+      "audience_fit": 0.80
+    },
+    "historical_fit": null,
+    "total_score": null,
+    "provenance": {
+      "generated_by": "mock_catalog_v1",
+      "source": "internal_mock",
+      "created_at": "2026-09-20T00:00:00+00:00",
+      "provider": null,
+      "model": null,
+      "prompt_version": null
+    }
+  },
+  {
+    "topic_id": "t_octopus_hearts",
+    "title": "Why octopuses have three hearts",
+    "description": "Explainer: two branchial hearts push blood through the gills, one systemic heart powers the body; two hearts shut down while swimming. Internal mock candidate.",
+    "pillar": "science",
+    "topic_type": "surprising_fact",
+    "signals": {
+      "interest": 0.75,
+      "trend_momentum": 0.35,
+      "competition": 0.30,
+      "freshness": 0.10
+    },
+    "content_scores": {
+      "curiosity": 0.90,
+      "explainer_potential": 0.75,
+      "visual_potential": 0.80,
+      "audience_fit": 0.80
+    },
+    "historical_fit": null,
+    "total_score": null,
+    "provenance": {
+      "generated_by": "mock_catalog_v1",
+      "source": "internal_mock",
+      "created_at": "2026-09-20T00:00:00+00:00",
+      "provider": null,
+      "model": null,
+      "prompt_version": null
+    }
+  },
+  {
+    "topic_id": "t_black_hole",
+    "title": "Why can't we see inside a black hole?",
+    "description": "Explainer: the event horizon is the last surface where light can still escape; anything beyond it cannot send signals back out. Internal mock candidate.",
+    "pillar": "space",
+    "topic_type": "scientific_concept",
+    "signals": {
+      "interest": 0.80,
+      "trend_momentum": 0.25,
+      "competition": 0.40,
+      "freshness": 0.10
+    },
+    "content_scores": {
+      "curiosity": 0.95,
+      "explainer_potential": 0.85,
+      "visual_potential": 0.90,
+      "audience_fit": 0.90
+    },
+    "historical_fit": null,
+    "total_score": null,
+    "provenance": {
+      "generated_by": "mock_catalog_v1",
+      "source": "internal_mock",
+      "created_at": "2026-09-20T00:00:00+00:00",
+      "provider": null,
+      "model": null,
+      "prompt_version": null
+    }
+  },
+  {
+    "topic_id": "t_earth_stops_spinning",
+    "title": "What would happen if Earth suddenly stopped spinning?",
+    "description": "Explainer thought experiment: momentum, day length, wind and oceans. Internal mock candidate.",
+    "pillar": "curiosity",
+    "topic_type": "unusual_phenomenon",
+    "signals": {
+      "interest": 0.85,
+      "trend_momentum": 0.20,
+      "competition": 0.35,
+      "freshness": 0.10
+    },
+    "content_scores": {
+      "curiosity": 0.95,
+      "explainer_potential": 0.80,
+      "visual_potential": 0.85,
+      "audience_fit": 0.85
+    },
+    "historical_fit": null,
+    "total_score": null,
+    "provenance": {
+      "generated_by": "mock_catalog_v1",
+      "source": "internal_mock",
+      "created_at": "2026-09-20T00:00:00+00:00",
+      "provider": null,
+      "model": null,
+      "prompt_version": null
+    }
+  },
+  {
+    "topic_id": "t_europa_salt",
+    "title": "Salt crystals on Europa: a new look at an icy moon",
+    "description": "Mock recent-discovery framing to exercise the 'recent_discovery' topic type. NOT a real claim; no claim of trending status.",
+    "pillar": "space",
+    "topic_type": "recent_discovery",
+    "signals": {
+      "interest": 0.55,
+      "trend_momentum": 0.45,
+      "competition": 0.40,
+      "freshness": 0.30
+    },
+    "content_scores": {
+      "curiosity": 0.65,
+      "explainer_potential": 0.60,
+      "visual_potential": 0.75,
+      "audience_fit": 0.80
+    },
+    "historical_fit": null,
+    "total_score": null,
+    "provenance": {
+      "generated_by": "mock_catalog_v1",
+      "source": "internal_mock",
+      "created_at": "2026-09-20T00:00:00+00:00",
+      "provider": null,
+      "model": null,
+      "prompt_version": null
+    }
+  },
+  {
+    "topic_id": "t_first_bug",
+    "title": "The first computer bug was a literal moth",
+    "description": "Historical: a moth found in the Harvard Mark II relay, taped into the logbook in 1947. Internal mock candidate.",
+    "pillar": "technology",
+    "topic_type": "historical",
+    "signals": {
+      "interest": 0.50,
+      "trend_momentum": 0.10,
+      "competition": 0.15,
+      "freshness": 0.05
+    },
+    "content_scores": {
+      "curiosity": 0.75,
+      "explainer_potential": 0.60,
+      "visual_potential": 0.55,
+      "audience_fit": 0.70
+    },
+    "historical_fit": null,
+    "total_score": null,
+    "provenance": {
+      "generated_by": "mock_catalog_v1",
+      "source": "internal_mock",
+      "created_at": "2026-09-20T00:00:00+00:00",
+      "provider": null,
+      "model": null,
+      "prompt_version": null
+    }
+  },
+  {
+    "topic_id": "t_ai_hallucination",
+    "title": "Why do AI models hallucinate?",
+    "description": "Explainer: next-token prediction has no memory of truth, only likelihood. Internal mock candidate.",
+    "pillar": "ai",
+    "topic_type": "scientific_concept",
+    "signals": {
+      "interest": 0.60,
+      "trend_momentum": 0.30,
+      "competition": 0.50,
+      "freshness": 0.10
+    },
+    "content_scores": {
+      "curiosity": 0.70,
+      "explainer_potential": 0.75,
+      "visual_potential": 0.55,
+      "audience_fit": 0.80
+    },
+    "historical_fit": null,
+    "total_score": null,
+    "provenance": {
+      "generated_by": "mock_catalog_v1",
+      "source": "internal_mock",
+      "created_at": "2026-09-20T00:00:00+00:00",
+      "provider": null,
+      "model": null,
+      "prompt_version": null
+    }
+  }
+]
