@@ -6,8 +6,9 @@ that later stages (fact check, script) are allowed to consume.
 The research stage is **implemented** as a deterministic, mock-backed
 pipeline (no network/API/LLM calls). A pluggable `ResearchProvider`
 interface (`agents/research/provider.py`) exists to swap in real search
-sources later with no agent changes. The **fact-check stage remains design
-only** (`FACT_VERIFICATION.md`).
+sources later with no agent changes. The **fact-check stage is implemented**
+too (`agents/qa/fact_checker/`, `FACT_VERIFICATION.md`): it settles which
+claims are fit for the script.
 
 ## 1. Guiding rule
 

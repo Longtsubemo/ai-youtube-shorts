@@ -50,9 +50,9 @@ Analytics
 Topic Selection feedback loop
 ```
 
-Only the **first two stages are implemented** (Topic Selection = Stage 1,
-Research = Stage 2). Everything below Research is design-only documentation
-until implemented.
+The first **three** stages are implemented (Topic Selection = Stage 1,
+Research = Stage 2, Fact Checking = Stage 3). Everything below Fact Checking
+is design-only documentation until implemented.
 
 ## Stage 1 — Topic Selection
 
@@ -200,37 +200,51 @@ artifact shape (`Source`, `FactClaim`, `ResearchPackage`, `TopicCandidate`,
 
 ## Current verification
 
-Full suite: **122 tests passing** (42 Stage 1 + 80 Stage 2).
+Full suite: **201 tests passing** (42 Stage 1 + 80 Stage 2 + 79 Stage 3).
 
 ## Stage 3 — Fact Checking
 
-**Status:** NEXT — **NOT IMPLEMENTED.** Do not imply that it exists.
+**Status:** COMPLETE
 
-**Goal:** take a `ResearchPackage` and independently evaluate whether the
-claims are sufficiently supported by their evidence.
+**Implementation location:** `agents/qa/fact_checker/`
 
-**Expected result:** `FactCheckResult` (see `docs/DATA_CONTRACTS.md` §7)
-with a verdict such as:
+Implemented components:
 
-- `PASS`
-- `REVIEW`
-- `REJECT`
+- `Evidence` — content excerpt retrieved from a source (≠ source URL)
+  (`models.py`), with deterministic id `ev_<sha1(source_id:excerpt)[:10]>`
+- `ClaimVerdict` / `FactCheckResult` — versioned Stage-3 artifact
+  (`models.py`), id `fc_<sha1(run_id:package_id)[:12]>`
+- `EvidenceProvider` protocol + `MockEvidenceProvider` — deterministic,
+  network-free, fixture-backed (`evidence.py`)
+- `Verifier` protocol + `MockVerifier` — rule-based claim↔evidence coverage
+  matcher; the future LLM boundary (`verifier.py`)
+- `FactCheckConfig` / `evaluate_claim` / `aggregate_package` — deterministic
+  gates + confidence + package verdict (`gates.py`)
+- `FactChecker` — ResearchPackage → evidence → verifier → gates →
+  FactCheckResult; drops + records malformed/dangling evidence
+  (`checker.py`)
+- `run_fact_check` stage entrypoint + `__main__` CLI + `pipeline/state.py`
+  `Stage.FACT_CHECK`
+- Mock evidence fixture `data/mock/fact_check_evidence.json` (clearly marked
+  MOCK; aligned with the Stage-2 mock research fixtures)
 
-The fact checker should evaluate:
+### Behavior
 
-- source quality
-- evidence supporting the claim
-- corroboration
-- contradictions
-- unsupported claims
-- dates/freshness where relevant
-- confidence
-- whether speculation is being presented as fact
+- Verdicts: `PASS` / `REVIEW` / `REJECT`; rank `PASS < REVIEW < REJECT`;
+  gates only downgrade, never upgrade to PASS.
+- Critical claims need ≥2 independent non-discovery sources; critical
+  `REVIEW` → package `REVIEW`, critical `REJECT` → package `REJECT`.
+- `approved_claims` is exactly what Stage 4 may consume; rejected/REVIEW
+  claims are excluded.
+- Documented policy: `docs/FACT_VERIFICATION.md`, `docs/DATA_CONTRACTS.md` §7.
 
-**Important architectural rule:** the `ResearchAgent` must NOT perform final
-fact verification. Stage 3 is a separate quality gate.
+### Test status
 
-Detailed design intent: `docs/FACT_VERIFICATION.md` (design only).
+79 Stage 3 tests (`tests/test_fact_check_models.py`,
+`tests/test_fact_check_evidence.py`, `tests/test_fact_checker.py`, plus
+`tests/fact_check_test_utils.py` builders). CLI:
+`python -m agents.qa.fact_checker` (writes `data/<run_id>/research/fact_check_result.json`
++ run state).
 
 ## Future stages
 
@@ -296,17 +310,20 @@ Do not decide these unless the decision is already implemented:
 ## Current checkpoint
 
 ```
-STAGE 2 COMPLETE
+STAGE 1 COMPLETE (Topic Selection)
     ↓
-DOCUMENTATION SYNCHRONIZED
+STAGE 2 COMPLETE (Research Pipeline)
     ↓
-STAGE 3 FACT CHECKER IS NEXT
+STAGE 3 COMPLETE (Fact Checking)
+    ↓
+STAGE 4 SCRIPT GENERATION IS NEXT
 ```
 
-Current verification: 122 tests passing.
+Current verification: 201 tests passing.
 
-The next implementation task is **"Implement Stage 3 — Fact Checker"** —
-do not implement it now.
+The next implementation task is **"Implement Stage 4 — Script Generation"** —
+do not implement it now. It may consume the `FactCheckResult.approved_claims`
+only.
 
 ## How to continue
 
@@ -315,7 +332,7 @@ do not implement it now.
 3. Read `docs/DATA_CONTRACTS.md`.
 4. Read `docs/FACT_VERIFICATION.md`.
 5. Confirm the current test suite passes
-   (`python -m pytest tests -q` — expect 122 passing).
-6. Continue with Stage 3 only.
+   (`python -m pytest tests -q` — expect 201 passing).
+6. Continue with Stage 4 only.
 7. Do not redo completed stages unless a concrete bug is discovered.
 8. Do not rely on previous OpenCode conversation history.

@@ -28,6 +28,7 @@ class Stage(str, Enum):
     SEO_RESEARCH = "seo_research"
     TOPIC_SELECTION = "topic_selection"
     RESEARCH = "research"
+    FACT_CHECK = "fact_check"
     SCRIPT_GENERATION = "script_generation"
     SCENE_PLANNING = "scene_planning"
     PRODUCTION = "production"

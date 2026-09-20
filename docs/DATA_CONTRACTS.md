@@ -284,27 +284,111 @@ one selected topic, plus provenance and status. Full envelope + `data`:
 
 ## 7. FactCheckResult
 
-`FACT_VERIFICATION.md`.
+The fact-check stage's artifact (`FACT_VERIFICATION.md`, Stage 3). It evaluates
+every claim against **supplied evidence only** and issues an overall verdict.
+Full envelope + `data`:
 
 ```json
 {
-  "result_id": "fc_01J..",
+  "schema": "FactCheckResult",
+  "schema_version": 1,
+  "created_at": "2026-09-20T08:05:00+00:00",
   "run_id": "1c34504001b0",
-  "package_id": "rp_01J..",
-  "verdict": "PASS",
-  "per_claim": {
-    "cl_01J..": {"outcome": "PASS", "note": "2 independent primary/secondary sources; no contradiction."},
-    "cl_02K..": {"outcome": "REVIEW", "note": "Only discovery sources found."}
-  },
-  "blocked": ["cl_02K.."],
-  "critical_rejected": [],
-  "checked_at": "2026-09-20T08:05:00+00:00"
+  "stage": "fact_check",
+  "produced_by": {"prompt_version": null, "provider": "MockEvidenceProvider", "model": "MockVerifier"},
+  "data": {
+    "result_id": "fc_aa4ad44ea7fa9",
+    "topic_id": "t_octopus_hearts",
+    "topic_title": "Why octopuses have three hearts",
+    "package_id": "rp_6003faf0a58c",
+    "package_verdict": "PASS",
+    "claim_results": [
+      {
+        "claim_id": "cl_04e08cd0cb",
+        "verdict": "PASS",
+        "evidence_ids": ["ev_56b649a6e9", "ev_9155cf348b"],
+        "supporting_source_ids": ["src_34ce4eb949"],
+        "contradiction_source_ids": [],
+        "rationale": "evidence examined: ev_56b649a6e9, ev_9155cf348b; supporting sources: src_34ce4eb949; contradicting sources: none",
+        "confidence": 0.85,
+        "critical": false,
+        "checks_performed": ["stance_overall=direct", "contradiction_present=no"],
+        "verifier": "MockVerifier"
+      },
+      {
+        "claim_id": "cl_02K..",
+        "verdict": "REVIEW",
+        "evidence_ids": ["ev_2392068451"],
+        "supporting_source_ids": [],
+        "contradiction_source_ids": ["src_21df285abb"],
+        "rationale": "credible contradictory evidence present",
+        "confidence": 0.3,
+        "critical": false,
+        "checks_performed": ["stance_overall=contradictory", "contradiction_present=yes"],
+        "verifier": "MockVerifier"
+      }
+    ],
+    "critical_claim_failures": [],
+    "review_items": ["cl_02K.."],
+    "rejected_claims": [],
+    "approved_claims": ["cl_04e08cd0cb"],
+    "evidence_issues": [],
+    "provenance": {
+      "generated_by": "fact_check_agent_v1",
+      "source": "MockEvidenceProvider:MockVerifier",
+      "created_at": "2026-09-20T08:05:00+00:00",
+      "provider": null,
+      "model": "MockVerifier",
+      "prompt_version": null
+    }
+  }
 }
 ```
 
-- `verdict` in `PASS` / `REVIEW` / `REJECT`. `outcome` per claim in
-  `PASS` / `REVIEW` / `REJECT`.
-- A critical claim in `blocked` forces `REJECT`.
+- `package_verdict` and per-claim `verdict` in `PASS` / `REVIEW` / `REJECT`.
+  Verdict rank: `PASS < REVIEW < REJECT`; gates only make a verdict worse,
+  never upgrade REVIEW/REJECT to PASS.
+- `approved_claims` is **exactly** what Stage 4 may consume — rejected and
+  REVIEW claims are excluded and never reach the script stage.
+- `critical_claim_failures` = critical claims that did not pass; any critical
+  `REVIEW` forces package `REVIEW`, any critical `REJECT` forces package
+  `REJECT`. Non-critical `REJECT`s may be dropped from the script instead.
+- Every `PASS` is traceable: `evidence_ids` must be non-empty and each
+  evidence's `source_id` resolves to a `Source` inside the package (dangling
+  evidence is dropped and recorded in `evidence_issues`).
+- `evidence_issues` records provider failures, malformed evidence, and
+  evidence referencing unknown sources — the checker never crashes on bad
+  input.
+- `result_id` is stable/deterministic: `fc_<sha1(run_id:package_id)[:12]>`.
+- `produced_by`/`provenance` record which provider and verifier ran; with a
+  real LLM verifier it will carry the model + prompt version.
+
+### Evidence (provider sub-contract)
+
+`FactCheckResult` references `Evidence` by `evidence_id`; the full evidence
+list is provided by an `EvidenceProvider` (mock fixture
+`data/mock/fact_check_evidence.json`, keyed by source URL). Each evidence:
+
+```json
+{
+  "evidence_id": "ev_56b649a6e9",
+  "source_id": "src_34ce4eb949",
+  "excerpt": "Octopuses have three hearts: two branchial and one systemic.",
+  "locator": "section: cardiac anatomy",
+  "evidence_type": "direct_statement",
+  "retrieved_at": "2026-09-20T08:00:00+00:00",
+  "notes": "MOCK"
+}
+```
+
+- `evidence_type` in `direct_statement` / `supporting_context` /
+  `contradictory_statement` / `insufficient`. A source URL alone is never
+  evidence; only retrieved content (`excerpt`) counts.
+- `evidence_id` is stable/deterministic:
+  `ev_<sha1(source_id:excerpt)[:10]>`.
+- `confidence` per claim: tier base (primary 0.85 / high-quality secondary
+  0.6 / discovery 0.3), +0.05 per extra independent non-discovery source
+  (cap 0.95), REVIEW capped at 0.5, REJECT capped at 0.3.
 
 ## 8. Script
 
@@ -472,8 +556,10 @@ data/<run_id>/
 
 - ID formats implemented so far: `ts_<uuid[:12]>` (TopicSelection),
   `src_<sha1(url)[:10]>` and `cl_<sha1(text)[:10]>` (research),
-  `rp_<uuid[:12]>` (ResearchPackage). Topic ids are stable typed slugs
-  (`t_<slug>`). Remaining stages' prefixes (`fc_/sc_/sp_/pp_/qa_/an_`)
+  `rp_<uuid[:12]>` (ResearchPackage, though deterministic `rp_<sha1(run:topic)[:12]>`
+  is used by the research agent), `ev_<sha1(source_id:excerpt)[:10]>` (evidence),
+  `fc_<sha1(run_id:package_id)[:12]>` (FactCheckResult). Topic ids are stable
+  typed slugs (`t_<slug>`). Remaining stages' prefixes (`sc_/sp_/pp_/qa_/an_`)
   are still to be settled by those stages.
 - Whether QA results for all stages share one file each per run or one
   QAResult registry file with stage records.

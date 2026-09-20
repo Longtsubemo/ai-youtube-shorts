@@ -1,8 +1,11 @@
 # Fact Verification
 
 A **separate stage from research** that settles whether claims are fit
-for the script. Stage 3 (fact check) is design only; the research stage it
-consumes is implemented (deterministic, mock-backed — `RESEARCH_PIPELINE.md`).
+for the script. Stage 3 (fact check) is **implemented** — deterministic,
+mock-backed (`agents/qa/fact_checker/`), consuming the research stage's
+`ResearchPackage` and producing a `FactCheckResult`. It is an *evidence
+verifier*, not a truth source: every verdict derives only from the
+evidence actually supplied for the claim's cited sources.
 
 ## 1. Responsibility boundary
 
@@ -11,6 +14,11 @@ consumes is implemented (deterministic, mock-backed — `RESEARCH_PIPELINE.md`).
 
 Fact check never silently rewrites claims; it returns outcomes so a
 human (or later an automated repair loop) can act.
+
+Key rule enforced by the implementation: **a source is not evidence.**
+The checker operates on `Evidence` objects (content excerpts retrieved per
+source by an `EvidenceProvider`), never on bare URLs, and never on the
+verifier's own world knowledge.
 
 ## 2. Verdicts
 
@@ -46,26 +54,45 @@ research directly.
 
 ## 4. Verification method (rules, not vibes)
 
-The fact checker applies deterministic-ish checks around sources and
-claims:
+The fact checker is fully deterministic and network-free: a rule-based
+`MockVerifier` (hash/coverage text matching over the supplied excerpts)
+produces an evidence analysis, and `gates.py` turns it into a verdict.
+`agents/qa/fact_checker/`:
 
 1. **Source credibility tier weight** — primary > high-quality secondary >
-   discovery (`RESEARCH_PIPELINE.md` §4). Discovery alone ≠ support.
-2. **Corroboration** — count of independent, non-discovery sources per
-   critical claim (policy threshold set in configuration).
-3. **Contradiction scan** — search for evidence against the claim; a
-   single strongly sourced contradiction beats multiple weak
-   confirmations.
-4. **Date alignment** — claim dates must match source/event dates
-   (`RESEARCH_PIPELINE.md` §5). A claim about "today" backed only by an
-   old or pre-announcement source fails.
-5. **Type integrity** — a claim labeled `fact` that is really an
-   `inference`/`opinion` demotes or rejects per policy.
-6. **Source sanity** — source metadata present, URL plausible, publisher
-   known, not an LLM-generated source citation (hallucinated references).
+   discovery (`RESEARCH_PIPELINE.md` §4). Discovery alone ≠ support:
+   discovery-only evidence reviews the claim.
+2. **Corroboration** — critical claims need ≥2 independent non-discovery
+   sources (`FactCheckConfig.corroboration_min_sources`, default 2) or the
+   claim stays `REVIEW`.
+3. **Contradiction scan** — a credible (non-discovery) source whose excerpt
+   contradicts the claim forces support level `contradictory` and `REVIEW`,
+   even against otherwise good support. A discovery-tier contradiction does
+   not override primary support.
+4. **Stronger-than-evidence** — a claim worded more strongly than its
+   evidence (e.g. "proved X causes Y" vs "observed a correlation") reviews;
+   speculation/opinion presented as fact rejects; unsupported claims reject.
+5. **Coverage thresholds** — the portion of the claim's meaningful wording
+   found verbatim in an excerpt decides `direct` (≥0.8), `partial` (≥0.3),
+   `contradictory` (≥0.2), else `none`. Direct → PASS, partial → REVIEW.
+6. **Type integrity** — a claim typed `speculation`/`opinion` can never be
+   a factual PASS regardless of its evidence wording.
+7. **Source sanity** — claims referencing unknown sources, claims with no
+   sources, and empty packages reject. Evidence referencing unknown sources
+   or failing validation is dropped and recorded in `evidence_issues`
+   (never a crash, never a silent PASS).
 
-Outputs must be explainable: every outcome carries the evidence and
-reasoning so a human can audit in seconds.
+Date alignment (`RESEARCH_PIPELINE.md` §5) is **not yet gated**: claim dates
+are checked for freshness only by future stages. Verdict gates can only make
+a verdict worse (`PASS < REVIEW < REJECT`); a gate never upgrades to PASS.
+
+Confidence (0–1, per claim): tier base primary 0.85 / high-quality secondary
+0.6 / discovery 0.3, +0.05 per extra independent non-discovery source (cap
+0.95), REVIEW capped at 0.5, REJECT capped at 0.3.
+
+Outputs are explainable: every outcome carries the exact evidence ids,
+supporting/contradicting source ids, and the reason, so a human can audit in
+seconds.
 
 ## 5. Claims and traceability
 
@@ -96,8 +123,10 @@ retractions/corrections policy (`FACT_VERIFICATION.md` + `DATA_CONTRACTS.md`).
 
 ## 8. Open questions
 
-- Corroboration threshold per claim type (config value; suggested
-  default: ≥2 independent non-discovery sources for critical facts).
-- Whether fact check is fully LLM-in-the-loop or rule-first with LLM
-  assist (initial: rule-first, LLM assist).
-- Contradiction evidence weighting (how many sources beat one).
+- Whether a real LLM verifier is added later. The `Verifier` protocol is the
+  future LLM boundary: a model can be plugged in, but its prompt must be
+  constrained to `{claim, supplied evidence, source metadata}` and must never
+  fall back on outside memory as evidence (`agents/qa/fact_checker/verifier.py`).
+- Date/freshness gating (claim dates vs source/event dates) is future work.
+- Contradiction evidence weighting (how many discovery-tier sources would
+  outweigh one primary confirmation).
