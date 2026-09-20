@@ -50,10 +50,10 @@ Analytics
 Topic Selection feedback loop
 ```
 
-The first **five** stages are implemented (Topic Selection = Stage 1,
+The first **six** stages are implemented (Topic Selection = Stage 1,
 Research = Stage 2, Fact Checking = Stage 3, Script Generation = Stage 4,
-Script QA = Stage 5). Everything below Script QA is design-only documentation
-until implemented.
+Script QA = Stage 5, Scene Planning = Stage 6). Everything below Scene
+Planning is design-only documentation until implemented.
 
 ## Stage 1 — Topic Selection
 
@@ -201,8 +201,8 @@ artifact shape (`Source`, `FactClaim`, `ResearchPackage`, `TopicCandidate`,
 
 ## Current verification
 
-Full suite: **346 tests passing** (42 Stage 1 + 80 Stage 2 + 79 Stage 3 +
-53 Stage 4 + 92 Stage 5).
+Full suite: **466 tests passing** (42 Stage 1 + 80 Stage 2 + 79 Stage 3 +
+53 Stage 4 + 92 Stage 5 + 120 Stage 6).
 
 ## Stage 3 — Fact Checking
 
@@ -360,11 +360,78 @@ Implemented components:
 `tests/script_qa_test_utils.py` builders). CLI:
 `python -m agents.qa.script`.
 
+## Stage 6 — Scene Planning
+
+**Status:** COMPLETE
+
+**Implementation location:** `agents/scene_planner/`
+
+Implemented components:
+
+- `Scene` / `GlobalStyle` / `OnScreenText` / `AssetRequirement` /
+  `ContinuityAsset` / `ScenePlanningConfig` / `ProductionPlan` — versioned
+  Stage-6 artifact (`models.py`), the stable **CONTENT → VIDEO boundary**; id
+  `pp_<sha1(run_id:script_id)[:12]>`, scenes `scn_01..scn_NN`; envelope
+  header + `data` payload with per-scene `provenance` (planning rule +
+  embedded claim texts)
+- Controlled, provider-independent vocabulary (`models.py`): `visual_type` ∈
+  {generated_video, generated_image, stock_asset, diagram, text_only,
+  motion_graphic, existing_asset, transition}; `transition` ∈ {cut, fade,
+  dissolve, zoom, match_cut, none}; `on_screen_text.kind` ∈ {headline,
+  emphasis, label, caption} (label/caption are factual → require claim_refs)
+- `ScenePlanner` protocol + `MockScenePlanner` — deterministic, offline
+  planner over approved claim records only (`planner.py`); groups lines into
+  scenes (7 scenes for the octopus demo), mirrors the script's line timings,
+  and appends grounded visual treatments. No web, no LLM, no API, no GPU
+- `validate_production_plan` — deterministic validator with **21 rules
+  r01–r21** (`validator.py`): non-empty, unique/ordered scenes, durations,
+  script-duration tolerance, line coverage, claim whitelist (unknown/
+  unapproved/rejected/review each have their own rule), factual visuals +
+  factual text traceability, prompts where required, valid types, no
+  provider-specific wording/keys in the contract (plan-level provenance
+  record excluded), JSON round-trip; **r21 determinism** is a planner-level
+  guarantee asserted in tests
+- `run_scene_planning` + whitelist join `approved_claims` (same as Stages
+  4/5) + `generate_mock_qa_result` / `generate_mock_production_plan`
+  (`stage.py`); CLI `python -m agents.scene_planner` (writes
+  `data/<run_id>/production/production.json` + run state advanced to
+  `Stage.SCENE_PLANNING`); blocked gate or invalid plan → exit non-zero, no
+  artifact written
+- Mock fixture `data/mock/script_qa_result.json` — deterministic MOCK
+  ScriptQAResult (run `mock`, PASS score 100.0, genesis 2026-09-20) so the
+  demo run `data/sp-demo/` reproduces the octopus plan
+
+### Behavior
+
+- **QA gate:** `ScriptQAResult.overall_verdict` must be `PASS`; REVISE/REJECT
+  block planning before anything is generated (no silent fallback).
+- **Grounding:** the planner receives only approved claim records; every
+  factual scene and every factual `label`/`caption` traces to an approved
+  claim (scene → script line → claim → evidence → source). Scene provenance
+  embeds the claim texts for audit.
+- **Duration:** scene rules sum the mapped lines' timings; total must stay
+  within `duration_tolerance_seconds` (0.5) of the script duration.
+- **Negative prompts are visual-quality ONLY** — factual constraints are
+  never placed in negative prompt text.
+- **Provider-agnostic:** prompts/descriptions carry no model names, no API
+  fields, no provider syntax; the validator scans the contract for leaked
+  provider vocabulary (runway/veo/sora/luma/...).
+- Documented policy: `docs/DATA_CONTRACTS.md` §10; design history incl. the
+  superseded `ScenePlan` in §9.
+
+### Test status
+
+120 Stage 6 tests (`tests/test_scene_planning_models.py`,
+`tests/test_scene_planning_validator.py`,
+`tests/test_scene_planning_planner.py`,
+`tests/test_scene_planning_stage.py`, plus
+`tests/scene_planning_test_utils.py` builders). CLI:
+`python -m agents.scene_planner`.
+
 ## Future stages
 
 Planned, **not implemented**:
 
-- Stage 6 — Scene Planning
 - Stage 7 — Production / Colab Video Generation
 - Stage 8 — Video QA
 - Stage 9 — YouTube Policy / Publishing QA
@@ -378,8 +445,8 @@ Do not claim any of these are implemented.
 ## Important design decisions
 
 1. File-based, versioned JSON contracts are the interface between stages.
-2. `production.json` / `ProductionPlan` will eventually be the stable
-   boundary between content generation and video generation.
+2. `production.json` / `ProductionPlan` IS the stable boundary between
+   content generation and video generation (implemented in Stage 6).
 3. Components should be provider-agnostic and replaceable.
 4. The eventual production LLM is NOT the same as OpenCode's coding model.
 5. "Big Pickle" is currently used only as the coding agent.
@@ -432,14 +499,18 @@ STAGE 4 COMPLETE (Script Generation)
     ↓
 STAGE 5 COMPLETE (Script QA)
     ↓
-STAGE 6 SCENE PLANNING IS NEXT
+STAGE 6 COMPLETE (Scene Planning)
+    ↓
+STAGE 7 VIDEO GENERATION IS NEXT
 ```
 
-Current verification: 346 tests passing.
+Current verification: 466 tests passing.
 
-The next implementation task is **"Implement Stage 6 — Scene Planning"** --
-do not implement it now. Stage 6 consumes the QA-passed `Script` artifact
-(and its `ScriptQAResult`) to plan per-scene visuals, shots, and captions.
+The next implementation task is **"Implement Stage 7 — Production / Colab
+Video Generation"** -- do not implement it now. Stage 7 consumes the
+`ProductionPlan` (`production.json`) -- the Stage-6 boundary -- to drive a GPU
+worker that generates the actual video (audio, subtitles, assembly, and a
+video/policy QA gate follow in later stages).
 
 ## How to continue
 
@@ -448,7 +519,7 @@ do not implement it now. Stage 6 consumes the QA-passed `Script` artifact
 3. Read `docs/DATA_CONTRACTS.md`.
 4. Read `docs/FACT_VERIFICATION.md`.
 5. Confirm the current test suite passes
-   (`python -m pytest tests -q` — expect 346 passing).
-6. Continue with Stage 6 only.
+   (`python -m pytest tests -q` — expect 466 passing).
+6. Continue with Stage 7 only.
 7. Do not redo completed stages unless a concrete bug is discovered.
 8. Do not rely on previous OpenCode conversation history.

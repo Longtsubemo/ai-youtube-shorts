@@ -483,18 +483,18 @@ only factual input is (a) the `Script`, (b) the `FactCheckResult`, and (c) the
 claims as fact, and never rewrites the script: it emits a verdict plus
 actionable issues for a future revision agent.
 
-Example (`data/<run_id>/scripts/script_qa_result.json`):
+Example (committed fixture `data/mock/script_qa_result.json`):
 
 ```json
 {
   "schema": "ScriptQAResult",
   "schema_version": 1,
   "created_at": "2026-09-20T12:00:00.000000+00:00",
-  "run_id": "sqa-demo",
+  "run_id": "mock",
   "stage": "script_qa",
   "produced_by": { "prompt_version": null, "provider": null, "model": "ScriptQAValidator" },
   "data": {
-    "qa_result_id": "sqa_3df00a38bf37",
+    "qa_result_id": "sqa_e99181e73b5d",
     "script_id": "sc_9fc41d7a46b7",
     "topic_id": "t_octopus_hearts",
     "result_id": "fc_41e052643b3a",
@@ -597,70 +597,184 @@ CLI: `python -m agents.qa.script` (writes
 `Stage.SCRIPT_QA`). Config live in `ScriptQAConfig` /
 `agents/qa/script/models.py` and are documented above.
 
-## 9. ScenePlan
+## 9. ScenePlan (superseded)
 
-Visualization of the script into scenes (`VIDEO_PIPELINE.md`).
-
-```json
-{
-  "scene_plan_id": "sp_01J..",
-  "run_id": "1c34504001b0",
-  "script_id": "sc_01J..",
-  "scenes": [
-    {
-      "scene_id": "scn_01",
-      "index": 1,
-      "start_ms": 0,
-      "duration_ms": 3200,
-      "visual_description": "Microscope zoom on a bacterium with DNA loops.",
-      "narration_line_ids": ["ln_01"],
-      "subtitle_text": "Bacteria keep mugshots of past viruses.",
-      "transition_out": "dissolve"
-    }
-  ]
-}
-```
+The design-time `ScenePlan` shape has been consolidated into the implemented
+`ProductionPlan` (§10): `ProductionPlan.scenes` carries the scene-level
+description, narration, and transitions, so **no separate ScenePlan artifact is
+produced** and the `sp_` id prefix is not used.
 
 ## 10. ProductionPlan (production.json)
 
-The stable content-to-video contract (`VIDEO_PIPELINE.md` §3).
+**Implemented** (`agents/scene_planner/`). Stage 6 converts the QA-passed
+Stage-4 `Script` into this provider-independent, versioned plan — the stable
+CONTENT → VIDEO boundary (`VIDEO_PIPELINE.md` §3). A future video-generation
+stage consumes *only* this artifact and never reads `Script` /
+`ResearchPackage` directly.
+
+The plan describes **what to show**, never **how some provider should render
+it**: no video-model names, no API fields, no provider syntax (those belong to
+the Stage-7 GPU worker).
+
+Example (committed fixture / `generate_mock_production_plan()`):
 
 ```json
 {
-  "plan_id": "pp_01J..",
-  "run_id": "1c34504001b0",
-  "video": {
-    "orientation": "vertical_9_16",
-    "target_duration_s": 45,
-    "fps": 30,
-    "resolution": "1080x1920"
-  },
-  "scenes": [
-    {
-      "scene_id": "scn_01",
-      "index": 1,
-      "start_ms": 0,
-      "duration_ms": 3200,
-      "visual": {
-        "description": "Microscope zoom on a bacterium with DNA loops.",
-        "assets": ["asset_ref:1"]
+  "schema": "ProductionPlan",
+  "schema_version": 1,
+  "created_at": "2026-09-20T12:00:00.000000+00:00",
+  "run_id": "mock",
+  "stage": "scene_planning",
+  "produced_by": { "prompt_version": null, "provider": null, "model": "MockScenePlanner" },
+  "data": {
+    "production_plan_id": "pp_e99181e73b5d",
+    "topic_id": "t_octopus_hearts",
+    "topic_title": "Why octopuses have three hearts",
+    "script_id": "sc_9fc41d7a46b7",
+    "script_qa_result_id": "sqa_e99181e73b5d",
+    "scenes": [
+      {
+        "scene_id": "scn_01",
+        "order": 1,
+        "duration_seconds": 4.0,
+        "script_line_ids": ["ln_00"],
+        "narration": "You probably didn't know this, but Octopuses have three hearts",
+        "claim_refs": ["cl_b4ca50a10d"],
+        "visual_type": "generated_video",
+        "visual_description": "Vertical close-up of a common octopus moving through clear ocean water; the camera slowly pushes toward the animal while three subtle heart indicators appear on its body.",
+        "generation_prompt": "Vertical documentary-style underwater shot of a common octopus moving slowly across a rocky seabed, cinematic natural lighting, gentle camera push-in, three subtle heart indicators appearing on the body, realistic anatomy, educational visual style, 9:16 vertical composition, roughly four seconds of movement.",
+        "negative_prompt": "distorted anatomy, extra limbs, text artifacts, watermark, blurry image, unrealistic deformation",
+        "on_screen_text": [],
+        "transition": "cut",
+        "visual_continuity_group": "octopus",
+        "asset_requirements": [
+          { "asset_type": "generated_video", "subject": "octopus swimming on a rocky seabed", "quantity": 1, "continuity_group": "octopus" }
+        ],
+        "provenance": {
+          "generated_by": "MockScenePlanner",
+          "planning_rule": "hook_scene",
+          "claim_texts": {
+            "cl_b4ca50a10d": "Octopuses have three hearts: two branchial hearts that push blood through the gills and a systemic heart that powers the body."
+          }
+        }
       },
-      "narration": "Bacteria keep mugshots of past viruses in their DNA.",
-      "subtitle": "Bacteria keep mugshots of past viruses."
+      {
+        "scene_id": "scn_03",
+        "order": 3,
+        "duration_seconds": 8.4,
+        "script_line_ids": ["ln_02"],
+        "narration": "Octopuses have three hearts: two branchial hearts that push blood through the gills and a systemic heart that powers the body.",
+        "claim_refs": ["cl_b4ca50a10d"],
+        "visual_type": "motion_graphic",
+        "visual_description": "Animated vertical diagram of an octopus with three heart icons highlighted: two small hearts near the gills and one larger heart in the body, clean educational labels, gentle pulsing highlights.",
+        "generation_prompt": "Animated vertical motion graphic of an octopus with three heart icons adjacent to the gills and body, subtle pulsing highlights, clean science-explainer labeling, smooth motion-graphic animation, 9:16 vertical composition, about eight seconds.",
+        "negative_prompt": "distorted anatomy, extra limbs, text artifacts, watermark, blurry image, unrealistic deformation",
+        "on_screen_text": [ { "kind": "label", "text": "Three hearts", "claim_refs": ["cl_b4ca50a10d"] } ],
+        "transition": "cut",
+        "visual_continuity_group": "octopus",
+        "asset_requirements": [
+          { "asset_type": "motion_graphic", "subject": "three-heart anatomy diagram", "quantity": 1, "continuity_group": "octopus" }
+        ],
+        "provenance": {
+          "generated_by": "MockScenePlanner",
+          "planning_rule": "fact_motion_graphic",
+          "claim_texts": {
+            "cl_b4ca50a10d": "Octopuses have three hearts: two branchial hearts that push blood through the gills and a systemic heart that powers the body."
+          }
+        }
+      }
+    ],
+    "total_duration_seconds": 45.2,
+    "global_style": {
+      "aspect_ratio": "9:16",
+      "visual_style": "educational documentary",
+      "target_resolution": "1080x1920",
+      "fps": 30,
+      "color_palette_notes": "muted natural documentary tones; accent highlights for facts",
+      "consistency_notes": "same octopus design and lighting atmosphere across all scenes",
+      "default_transition": "cut",
+      "visual_continuity_requirements": "the octopus subject must keep one consistent appearance, environment and palette wherever it appears"
+    },
+    "covered_script_line_ids": ["ln_00", "ln_01", "ln_02", "ln_03", "ln_04", "ln_05", "ln_06", "ln_07"],
+    "uncovered_script_line_ids": [],
+    "continuity": [
+      {
+        "group": "octopus",
+        "subject": "common octopus",
+        "appearance": "realistic common octopus, natural reddish-brown coloration",
+        "environment": "clear ocean water over a rocky seabed",
+        "palette": "muted natural documentary tones",
+        "recurring_elements": "three highlighted heart indicators"
+      }
+    ],
+    "production_notes": [
+      "Produced by the deterministic MockScenePlanner; every visual is a suggestion for a future provider, not an asset.",
+      "Factual visuals derive solely from the Stage-3 approved claims and the Stage-4 script; no new factual information was added.",
+      "Total duration mirrors the Stage-4 script within 0.5s tolerance."
+    ],
+    "provenance": {
+      "generated_by": "scene_planner_agent_v1",
+      "source": "MockScenePlanner",
+      "created_at": "2026-09-20T12:00:00.000000+00:00",
+      "provider": null,
+      "model": "MockScenePlanner",
+      "prompt_version": "scene_planning.v1"
     }
-  ],
-  "audio": {
-    "voice": "calm, neutral, unambiguous",
-    "language": "en"
-  },
-  "subtitles": {"enabled": true, "style": "bold, lower-third, white"},
-  "output": {"filename": "short_final.mp4", "container": "mp4"}
+  }
 }
 ```
 
-- Provider-agnostic: everything is a description; no model/provider/API
-  details leak in.
-- `output` is the worker's deliverable contract.
+- **QA gate:** `ScriptQAResult.overall_verdict` must be `PASS`; otherwise the
+  stage is BLOCKED before any planning (REVISE/REJECT always block; an invalid
+  plan is a structured failure, never a silent fallback). The gate's
+  `qa_result_id` is recorded as `script_qa_result_id`.
+- **Scene mapping:** each scene maps ≥ 1 script line (`script_line_ids`)
+  unless its `visual_type` is `transition`; the mapped lines equal the full
+  script by default (`require_full_coverage`), and
+  `covered_script_line_ids` / `uncovered_script_line_ids` make the mapping
+  explicit. `total_duration_seconds` mirrors the script duration within
+  `duration_tolerance_seconds` (default 0.5).
+- **Grounding rule (safety, defense in depth):** every factual scene and every
+  factual `label`/`caption` on-screen text MUST carry `claim_refs` pointing
+  only at **approved** claims (`result.approved_claims`). The planner receives
+  only approved claim records (the Stage-3 whitelist join, same as Stages 4/5)
+  and never introduces new factual information; each scene's `provenance`
+  embeds the referenced claim texts so the chain
+  scene → script line → approved claim → evidence → source is auditable.
+  Validator rules r10–r15 re-check this even for a future LLM planner.
+- **Controlled vocabulary:** `visual_type` ∈ {generated_video, generated_image,
+  stock_asset, diagram, text_only, motion_graphic, existing_asset,
+  transition}; `transition` ∈ {cut, fade, dissolve, zoom, match_cut, none};
+  `on_screen_text.kind` ∈ {headline, emphasis, label, caption}. Generative
+  types require a `generation_prompt`; `negative_prompt` is **visual quality
+  only** and must never carry factual constraints.
+- **Operator-agnostic style:** default 9:16 / 1080x1920 / 30 fps /
+  "educational documentary"; configurable in `ScenePlanningConfig`.
+- **Continuity:** `continuity` plus per-scene `visual_continuity_group` keep
+  one subject/appearance/environment consistent across scenes.
+- **Validation (rules r01–r21):** r01–r20 run in the validator
+  (`agents/scene_planner/validator.py`) — non-empty plan, unique scene ids,
+  contiguous order, positive durations, internally consistent total, total
+  within script tolerance, ≥1 line per non-transition scene, full coverage,
+  referenced lines exist, claim refs approved (unknown / unapproved / rejected
+  / review each have their own rule), factual visuals trace claims, factual
+  text traceability, prompts where required, valid visual types, no
+  provider-specific wording or keys anywhere in the contract (the plan-level
+  `provenance` record is audit metadata and is excluded), provenance present,
+  JSON round-trip. **r21** (determinism) is a planner-level guarantee: running
+  the same inputs twice yields the identical plan — asserted in tests.
+- **Planner protocol:** `ScenePlanner.plan(script, qa_result, result, claims,
+  config, run_id, created_at) -> ProductionPlan`. The deterministic, offline
+  `MockScenePlanner` implements it; a future LLM planner implements the same
+  protocol and must pass the same validator. Provider fields (e.g. seed,
+  sampler, API keys, model names) are Stage-7 concerns, not part of this
+  contract.
+
+CLI: `python -m agents.scene_planner` (writes
+`data/<run_id>/production/production.json` + run state advanced to
+`Stage.SCENE_PLANNING`). A blocked gate or invalid plan exits non-zero without
+writing an artifact. Config lives in `ScenePlanningConfig` /
+`agents/scene_planner/models.py`.
 
 ## 11. QAResult
 
@@ -732,7 +846,7 @@ data/<run_id>/
 ├── research/           TopicCandidate, TopicSelection, Source, FactClaim,
 │                       ResearchPackage, FactCheckResult
 ├── scripts/            Script, QAResult(script)
-├── production/         ScenePlan, ProductionPlan (production.json), QAResult(video), QAResult(policy)
+├── production/         ProductionPlan (production.json), QAResult(video), QAResult(policy)
 └── videos/             generated assets + final Short
 ```
 
@@ -742,8 +856,11 @@ data/<run_id>/
   `src_<sha1(url)[:10]>` and `cl_<sha1(text)[:10]>` (research),
   `rp_<uuid[:12]>` (ResearchPackage, though deterministic `rp_<sha1(run:topic)[:12]>`
   is used by the research agent), `ev_<sha1(source_id:excerpt)[:10]>` (evidence),
-  `fc_<sha1(run_id:package_id)[:12]>` (FactCheckResult). Topic ids are stable
-  typed slugs (`t_<slug>`). Remaining stages' prefixes (`sc_/sp_/pp_/qa_/an_`)
-  are still to be settled by those stages.
+  `fc_<sha1(run_id:package_id)[:12]>` (FactCheckResult), `sc_<sha1(run_id:topic_id)[:12]>`
+  (Script), `sqa_<sha1(run_id:script_id)[:12]>` (ScriptQAResult), and the
+  Stage-6 `pp_<sha1(run_id:script_id)[:12]>` (ProductionPlan) with sequential
+  scene ids `scn_01..scn_NN`. Topic ids are stable typed slugs (`t_<slug>`).
+  Remaining stages' prefixes (`qa_`/`an_` and the Stage-7 worker result) are
+  still to be settled by those stages.
 - Whether QA results for all stages share one file each per run or one
   QAResult registry file with stage records.

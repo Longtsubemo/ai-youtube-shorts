@@ -5,10 +5,10 @@ script, plans a scene-by-scene production, generates video on a GPU
 worker, assembles the final YouTube Short, and eventually publishes it —
 end to end.
 
-> **Status: implementing, stage by stage.** Five content stages are
-> implemented with deterministic, network-free mock providers: topic
-> selection, research, fact checking, script generation, and script QA.
-> Video generation, publishing, and analytics are not implemented yet.
+> **Status: implementing, stage by stage.** Six stages are implemented with
+> deterministic, network-free mock providers: topic selection, research, fact
+> checking, script generation, script QA, and scene planning. Video generation,
+> publishing, and analytics are not implemented yet.
 
 ## Long-term pipeline
 
@@ -20,8 +20,7 @@ topic discovery
 → fact checking                      Stage 3 ✅ implemented
 → script generation                  Stage 4 ✅ implemented
 → script QA                           Stage 5 ✅ implemented
-→ scene planning
-→ production JSON
+→ scene planning / production JSON    Stage 6 ✅ implemented
 → Google Colab video generation (GPU worker)
 → voice / audio
 → video assembly
@@ -59,7 +58,7 @@ video/             Future video build steps (generation, editing, subtitles, aud
 data/              Working artifacts per run + committed mock fixtures under data/mock/
 prompts/           Prompt templates per agent
 config/            Configuration (populated later; secrets go in .env)
-tests/             Test suite for the implemented stages (346 passing)
+tests/             Test suite for the implemented stages (466 passing)
 ```
 
 ## Current development stage
@@ -77,8 +76,11 @@ Implemented stages (all deterministic, mock-backed, offline):
 - **Stage 5 — Script QA** (`agents/qa/script/`): deterministic quality
   control (13 checks, 9 hard gates, weighted score) → PASS / REVISE /
   REJECT with actionable issues; never rewrites the script.
+- **Stage 6 — Scene Planning** (`agents/scene_planner/`): QA-passed script →
+  provider-independent versioned `ProductionPlan` (`production.json`), the
+  stable CONTENT → VIDEO boundary; grounded in approved claims only.
 
-Not yet implemented: scene planning, video generation, voice/audio, video
+Not yet implemented: video generation (GPU worker), voice/audio, video
 assembly, publishing, analytics.
 
 ## Running the implemented stages
@@ -98,8 +100,9 @@ python -m agents.research.research_agent     # Stage 2: research package
 python -m agents.qa.fact_checker             # Stage 3: fact check
 python -m agents.script.script_generator     # Stage 4: script generation
 python -m agents.qa.script                   # Stage 5: script QA
+python -m agents.scene_planner               # Stage 6: scene planning (production.json)
 
-# run the whole test suite (346 tests passing)
+# run the whole test suite (466 tests passing)
 python -m pytest tests -q
 ```
 
@@ -108,7 +111,7 @@ in `state.json`.
 
 ## Design documentation
 
-The technical design is documented in `docs/`. Stages 1–5 are implemented;
+The technical design is documented in `docs/`. Stages 1–6 are implemented;
 the video-generation and marketplace docs remain design-only:
 
 | Doc | Covers |
@@ -128,8 +131,8 @@ the video-generation and marketplace docs remain design-only:
 
 1. Topic discovery and SEO research
 2. Topic selection / scoring
-3. Research → script generation → scene planning
-4. Production JSON contract + Colab worker hand-off
+3. Research → fact checking → script → script QA → scene planning (Stages 1–6)
+4. Colab video-generation worker consuming the `production.json` contract
 5. Voice, subtitles, video assembly, quality check
 6. YouTube upload and analytics feedback
 7. Scheduling

@@ -1,0 +1,206 @@
+{
+  "schema": "ScriptQAResult",
+  "schema_version": 1,
+  "created_at": "2026-09-20T12:00:00.000000+00:00",
+  "run_id": "mock",
+  "stage": "script_qa",
+  "produced_by": {
+    "prompt_version": null,
+    "provider": null,
+    "model": "ScriptQAValidator"
+  },
+  "data": {
+    "qa_result_id": "sqa_e99181e73b5d",
+    "script_id": "sc_9fc41d7a46b7",
+    "topic_id": "t_octopus_hearts",
+    "result_id": "fc_41e052643b3a",
+    "package_id": "rp_9fc41d7a46b7",
+    "overall_verdict": "PASS",
+    "score": 100.0,
+    "score_detail": {
+      "score": 100.0,
+      "dimensions": {
+        "factual_fidelity": 100.0,
+        "uncertainty": 100.0,
+        "traceability": 100.0,
+        "coverage": 100.0,
+        "clarity": 100.0,
+        "structure": 100.0,
+        "pacing": 100.0,
+        "hook": 100.0,
+        "repetition": 100.0,
+        "format": 100.0
+      },
+      "weights": {
+        "factual_fidelity": 0.2,
+        "uncertainty": 0.15,
+        "traceability": 0.15,
+        "coverage": 0.05,
+        "clarity": 0.1,
+        "structure": 0.1,
+        "pacing": 0.1,
+        "hook": 0.05,
+        "repetition": 0.05,
+        "format": 0.05
+      }
+    },
+    "checks": [
+      {
+        "check": "factual_fidelity",
+        "category": "factual_fidelity",
+        "dimension": "factual_fidelity",
+        "hard_gate": true,
+        "errors": 0,
+        "warnings": 0,
+        "infos": 0,
+        "passed": true
+      },
+      {
+        "check": "claim_traceability",
+        "category": "claim_traceability",
+        "dimension": "traceability",
+        "hard_gate": true,
+        "errors": 0,
+        "warnings": 0,
+        "infos": 0,
+        "passed": true
+      },
+      {
+        "check": "claim_coverage",
+        "category": "claim_coverage",
+        "dimension": "coverage",
+        "hard_gate": false,
+        "errors": 0,
+        "warnings": 0,
+        "infos": 0,
+        "passed": true
+      },
+      {
+        "check": "length_duration",
+        "category": "length_duration",
+        "dimension": "format",
+        "hard_gate": true,
+        "errors": 0,
+        "warnings": 0,
+        "infos": 0,
+        "passed": true
+      },
+      {
+        "check": "pacing",
+        "category": "pacing",
+        "dimension": "pacing",
+        "hard_gate": false,
+        "errors": 0,
+        "warnings": 0,
+        "infos": 0,
+        "passed": true
+      },
+      {
+        "check": "clarity",
+        "category": "clarity",
+        "dimension": "clarity",
+        "hard_gate": false,
+        "errors": 0,
+        "warnings": 0,
+        "infos": 0,
+        "passed": true
+      },
+      {
+        "check": "repetition",
+        "category": "repetition",
+        "dimension": "repetition",
+        "hard_gate": false,
+        "errors": 0,
+        "warnings": 0,
+        "infos": 0,
+        "passed": true
+      },
+      {
+        "check": "structure",
+        "category": "structure",
+        "dimension": "structure",
+        "hard_gate": true,
+        "errors": 0,
+        "warnings": 0,
+        "infos": 0,
+        "passed": true
+      },
+      {
+        "check": "hook_quality",
+        "category": "hook_quality",
+        "dimension": "hook",
+        "hard_gate": false,
+        "errors": 0,
+        "warnings": 0,
+        "infos": 0,
+        "passed": true
+      },
+      {
+        "check": "uncertainty_preservation",
+        "category": "uncertainty_preservation",
+        "dimension": "uncertainty",
+        "hard_gate": true,
+        "errors": 0,
+        "warnings": 0,
+        "infos": 0,
+        "passed": true
+      },
+      {
+        "check": "misleading_language",
+        "category": "misleading_language",
+        "dimension": "clarity",
+        "hard_gate": false,
+        "errors": 0,
+        "warnings": 0,
+        "infos": 0,
+        "passed": true
+      },
+      {
+        "check": "cta_quality",
+        "category": "cta_quality",
+        "dimension": "format",
+        "hard_gate": false,
+        "errors": 0,
+        "warnings": 0,
+        "infos": 0,
+        "passed": true
+      },
+      {
+        "check": "format_shorts",
+        "category": "format_shorts",
+        "dimension": "format",
+        "hard_gate": false,
+        "errors": 0,
+        "warnings": 0,
+        "infos": 0,
+        "passed": true
+      }
+    ],
+    "issues": [],
+    "warnings": [],
+    "infos": [],
+    "approved_claim_coverage": {
+      "approved_claim_ids": [
+        "cl_97628e259b",
+        "cl_b4ca50a10d",
+        "cl_f6089873c8"
+      ],
+      "used_claim_ids": [
+        "cl_97628e259b",
+        "cl_b4ca50a10d",
+        "cl_f6089873c8"
+      ],
+      "unused_approved_claim_ids": [],
+      "critical_unused_claim_ids": [],
+      "coverage_ratio": 1.0
+    },
+    "provenance": {
+      "generated_by": "script_qa_agent_v1",
+      "source": "DeterministicScriptQA",
+      "created_at": "2026-09-20T12:00:00.000000+00:00",
+      "provider": null,
+      "model": "ScriptQAValidator",
+      "prompt_version": "script_qa.v1"
+    }
+  }
+}
