@@ -1,0 +1,322 @@
+{
+  "schema": "TopicSelection",
+  "schema_version": 1,
+  "created_at": "2026-09-20T09:31:28.119388+00:00",
+  "run_id": "mock",
+  "stage": "topic_selection",
+  "produced_by": {
+    "prompt_version": null,
+    "provider": null,
+    "model": null
+  },
+  "data": {
+    "selection_id": "ts_a4ad44ea7fa9",
+    "selected_topic_id": "t_octopus_hearts",
+    "selected_topic": {
+      "topic_id": "t_octopus_hearts",
+      "title": "Why octopuses have three hearts",
+      "description": "Explainer: two branchial hearts push blood through the gills, one systemic heart powers the body; two hearts shut down while swimming. Internal mock candidate.",
+      "pillar": "science",
+      "topic_type": "surprising_fact",
+      "signals": {
+        "interest": 0.75,
+        "trend_momentum": 0.35,
+        "competition": 0.3,
+        "freshness": 0.1
+      },
+      "content_scores": {
+        "curiosity": 0.9,
+        "explainer_potential": 0.75,
+        "visual_potential": 0.8,
+        "audience_fit": 0.8
+      },
+      "historical_fit": null,
+      "total_score": 0.7150000000000001,
+      "provenance": {
+        "generated_by": "mock_catalog_v1",
+        "source": "internal_mock",
+        "created_at": "2026-09-20T00:00:00+00:00",
+        "provider": null,
+        "model": null,
+        "prompt_version": null
+      }
+    },
+    "ranked_candidates": [
+      {
+        "topic_id": "t_black_hole",
+        "title": "Why can't we see inside a black hole?",
+        "description": "Explainer: the event horizon is the last surface where light can still escape; anything beyond it cannot send signals back out. Internal mock candidate.",
+        "pillar": "space",
+        "topic_type": "scientific_concept",
+        "signals": {
+          "interest": 0.8,
+          "trend_momentum": 0.25,
+          "competition": 0.4,
+          "freshness": 0.1
+        },
+        "content_scores": {
+          "curiosity": 0.95,
+          "explainer_potential": 0.85,
+          "visual_potential": 0.9,
+          "audience_fit": 0.9
+        },
+        "historical_fit": null,
+        "total_score": 0.7375,
+        "provenance": {
+          "generated_by": "mock_catalog_v1",
+          "source": "internal_mock",
+          "created_at": "2026-09-20T00:00:00+00:00",
+          "provider": null,
+          "model": null,
+          "prompt_version": null
+        }
+      },
+      {
+        "topic_id": "t_earth_stops_spinning",
+        "title": "What would happen if Earth suddenly stopped spinning?",
+        "description": "Explainer thought experiment: momentum, day length, wind and oceans. Internal mock candidate.",
+        "pillar": "curiosity",
+        "topic_type": "unusual_phenomenon",
+        "signals": {
+          "interest": 0.85,
+          "trend_momentum": 0.2,
+          "competition": 0.35,
+          "freshness": 0.1
+        },
+        "content_scores": {
+          "curiosity": 0.95,
+          "explainer_potential": 0.8,
+          "visual_potential": 0.85,
+          "audience_fit": 0.85
+        },
+        "historical_fit": null,
+        "total_score": 0.73,
+        "provenance": {
+          "generated_by": "mock_catalog_v1",
+          "source": "internal_mock",
+          "created_at": "2026-09-20T00:00:00+00:00",
+          "provider": null,
+          "model": null,
+          "prompt_version": null
+        }
+      },
+      {
+        "topic_id": "t_octopus_hearts",
+        "title": "Why octopuses have three hearts",
+        "description": "Explainer: two branchial hearts push blood through the gills, one systemic heart powers the body; two hearts shut down while swimming. Internal mock candidate.",
+        "pillar": "science",
+        "topic_type": "surprising_fact",
+        "signals": {
+          "interest": 0.75,
+          "trend_momentum": 0.35,
+          "competition": 0.3,
+          "freshness": 0.1
+        },
+        "content_scores": {
+          "curiosity": 0.9,
+          "explainer_potential": 0.75,
+          "visual_potential": 0.8,
+          "audience_fit": 0.8
+        },
+        "historical_fit": null,
+        "total_score": 0.7150000000000001,
+        "provenance": {
+          "generated_by": "mock_catalog_v1",
+          "source": "internal_mock",
+          "created_at": "2026-09-20T00:00:00+00:00",
+          "provider": null,
+          "model": null,
+          "prompt_version": null
+        }
+      },
+      {
+        "topic_id": "t_ai_agents_computers",
+        "title": "How AI agents actually use computers",
+        "description": "Explainer: AI agents observe a screen, decide an action, and execute it step by step. Internal mock candidate, not researched.",
+        "pillar": "ai",
+        "topic_type": "evergreen",
+        "signals": {
+          "interest": 0.8,
+          "trend_momentum": 0.6,
+          "competition": 0.6,
+          "freshness": 0.1
+        },
+        "content_scores": {
+          "curiosity": 0.7,
+          "explainer_potential": 0.85,
+          "visual_potential": 0.6,
+          "audience_fit": 0.85
+        },
+        "historical_fit": null,
+        "total_score": 0.6875,
+        "provenance": {
+          "generated_by": "mock_catalog_v1",
+          "source": "internal_mock",
+          "created_at": "2026-09-20T00:00:00+00:00",
+          "provider": null,
+          "model": null,
+          "prompt_version": null
+        }
+      },
+      {
+        "topic_id": "t_noise_cancellation",
+        "title": "How does noise cancellation actually work?",
+        "description": "Explainer: microphones capture ambient sound, invert the wave, and cancel it before it reaches your ear. Internal mock candidate.",
+        "pillar": "technology",
+        "topic_type": "technology_development",
+        "signals": {
+          "interest": 0.7,
+          "trend_momentum": 0.4,
+          "competition": 0.5,
+          "freshness": 0.1
+        },
+        "content_scores": {
+          "curiosity": 0.6,
+          "explainer_potential": 0.8,
+          "visual_potential": 0.8,
+          "audience_fit": 0.8
+        },
+        "historical_fit": null,
+        "total_score": 0.645,
+        "provenance": {
+          "generated_by": "mock_catalog_v1",
+          "source": "internal_mock",
+          "created_at": "2026-09-20T00:00:00+00:00",
+          "provider": null,
+          "model": null,
+          "prompt_version": null
+        }
+      },
+      {
+        "topic_id": "t_europa_salt",
+        "title": "Salt crystals on Europa: a new look at an icy moon",
+        "description": "Mock recent-discovery framing to exercise the 'recent_discovery' topic type. NOT a real claim; no claim of trending status.",
+        "pillar": "space",
+        "topic_type": "recent_discovery",
+        "signals": {
+          "interest": 0.55,
+          "trend_momentum": 0.45,
+          "competition": 0.4,
+          "freshness": 0.3
+        },
+        "content_scores": {
+          "curiosity": 0.65,
+          "explainer_potential": 0.6,
+          "visual_potential": 0.75,
+          "audience_fit": 0.8
+        },
+        "historical_fit": null,
+        "total_score": 0.6100000000000001,
+        "provenance": {
+          "generated_by": "mock_catalog_v1",
+          "source": "internal_mock",
+          "created_at": "2026-09-20T00:00:00+00:00",
+          "provider": null,
+          "model": null,
+          "prompt_version": null
+        }
+      },
+      {
+        "topic_id": "t_ai_hallucination",
+        "title": "Why do AI models hallucinate?",
+        "description": "Explainer: next-token prediction has no memory of truth, only likelihood. Internal mock candidate.",
+        "pillar": "ai",
+        "topic_type": "scientific_concept",
+        "signals": {
+          "interest": 0.6,
+          "trend_momentum": 0.3,
+          "competition": 0.5,
+          "freshness": 0.1
+        },
+        "content_scores": {
+          "curiosity": 0.7,
+          "explainer_potential": 0.75,
+          "visual_potential": 0.55,
+          "audience_fit": 0.8
+        },
+        "historical_fit": null,
+        "total_score": 0.5925,
+        "provenance": {
+          "generated_by": "mock_catalog_v1",
+          "source": "internal_mock",
+          "created_at": "2026-09-20T00:00:00+00:00",
+          "provider": null,
+          "model": null,
+          "prompt_version": null
+        }
+      },
+      {
+        "topic_id": "t_first_bug",
+        "title": "The first computer bug was a literal moth",
+        "description": "Historical: a moth found in the Harvard Mark II relay, taped into the logbook in 1947. Internal mock candidate.",
+        "pillar": "technology",
+        "topic_type": "historical",
+        "signals": {
+          "interest": 0.5,
+          "trend_momentum": 0.1,
+          "competition": 0.15,
+          "freshness": 0.05
+        },
+        "content_scores": {
+          "curiosity": 0.75,
+          "explainer_potential": 0.6,
+          "visual_potential": 0.55,
+          "audience_fit": 0.7
+        },
+        "historical_fit": null,
+        "total_score": 0.57,
+        "provenance": {
+          "generated_by": "mock_catalog_v1",
+          "source": "internal_mock",
+          "created_at": "2026-09-20T00:00:00+00:00",
+          "provider": null,
+          "model": null,
+          "prompt_version": null
+        }
+      }
+    ],
+    "selection_mode": "cold_start",
+    "historical_data_available": false,
+    "selection_reason": "cold_start: no historical data; exploring to build channel signal explored top-3 candidates across pillars [curiosity, science, space] with coverage penalty 0.25 | selected 'Why octopuses have three hearts' (pillar=science, topic_type=surprising_fact, total_score=0.7150) | historical_data_available=False",
+    "scoring_configuration": {
+      "version": 1,
+      "scoring": {
+        "weights": {
+          "interest": 0.2,
+          "trend_momentum": 0.15,
+          "competition": 0.15,
+          "curiosity": 0.15,
+          "explainer_potential": 0.15,
+          "visual_potential": 0.1,
+          "audience_fit": 0.1
+        },
+        "competition_transformation": "inverse",
+        "historical_enabled": true,
+        "historical_weight": 0.25
+      },
+      "selection": {
+        "exploration_fraction": 0.3,
+        "seed": 42,
+        "top_n": 3,
+        "coverage_penalty": 0.25
+      },
+      "pillars": [
+        "ai",
+        "technology",
+        "science",
+        "space",
+        "curiosity"
+      ],
+      "topic_types": [
+        "evergreen",
+        "trending",
+        "recent_discovery",
+        "historical",
+        "surprising_fact",
+        "technology_development",
+        "scientific_concept",
+        "unusual_phenomenon"
+      ]
+    }
+  }
+}

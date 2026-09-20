@@ -1,7 +1,8 @@
 # Fact Verification
 
 A **separate stage from research** that settles whether claims are fit
-for the script. Design only; nothing is implemented.
+for the script. Stage 3 (fact check) is design only; the research stage it
+consumes is implemented (deterministic, mock-backed — `RESEARCH_PIPELINE.md`).
 
 ## 1. Responsibility boundary
 
@@ -39,16 +40,17 @@ Per-claim outcomes map onto the same tri-state with notes:
   rejected claim.
 
 Rejected packages cannot reach script generation. Script generation may
-only read **approved research** (`approved` status on
-`ResearchPackage`), never raw unrestricted research.
+only consume research that passed the fact-check stage (a `FactCheckResult`
+verdict, `DATA_CONTRACTS.md` §7); it must never read raw, still-provisional
+research directly.
 
 ## 4. Verification method (rules, not vibes)
 
 The fact checker applies deterministic-ish checks around sources and
 claims:
 
-1. **Source hierarchy weight** — primary > high-quality secondary >
-   discovery (`RESEARCH_PIPELINE.md`). Discovery alone ≠ support.
+1. **Source credibility tier weight** — primary > high-quality secondary >
+   discovery (`RESEARCH_PIPELINE.md` §4). Discovery alone ≠ support.
 2. **Corroboration** — count of independent, non-discovery sources per
    critical claim (policy threshold set in configuration).
 3. **Contradiction scan** — search for evidence against the claim; a
@@ -86,9 +88,11 @@ retractions/corrections policy (`FACT_VERIFICATION.md` + `DATA_CONTRACTS.md`).
 
 ## 7. Contracts
 
-- `FactCheckResult` (result, per-claim outcomes, blocked claim IDs).
-- Attached to the `ResearchPackage` approval status before any script
-  work. Stored at `data/<run_id>/research/`.
+- `FactCheckResult` (result, per-claim outcomes, blocked claim IDs;
+  `DATA_CONTRACTS.md` §7).
+- Stored alongside its `ResearchPackage` at `data/<run_id>/research/`;
+  script generation gates on the fact-check verdict, not on a
+  research-stage status.
 
 ## 8. Open questions
 

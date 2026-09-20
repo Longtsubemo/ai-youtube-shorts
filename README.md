@@ -101,7 +101,7 @@ implementation beyond the scaffold below):
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, pipeline stages, resumability, replaceability boundaries |
 | [CONTENT_STRATEGY.md](docs/CONTENT_STRATEGY.md) | Channel identity, pillars, fixed 30–60 s story format |
 | [TOPIC_SELECTION.md](docs/TOPIC_SELECTION.md) | External signals, cold start, exploration/exploitation |
-| [RESEARCH_PIPELINE.md](docs/RESEARCH_PIPELINE.md) | Evidence-backed claims, source hierarchy, claim/source/date model |
+| [RESEARCH_PIPELINE.md](docs/RESEARCH_PIPELINE.md) | Evidence-backed claims, source credibility tiers, claim/source/date model |
 | [FACT_VERIFICATION.md](docs/FACT_VERIFICATION.md) | Separate fact-check stage: PASS/REVIEW/REJECT gating |
 | [POLICY_AND_SAFETY.md](docs/POLICY_AND_SAFETY.md) | YouTube policy checks, human approval gate |
 | [VIDEO_PIPELINE.md](docs/VIDEO_PIPELINE.md) | Shorts target, production.json interface, Colab worker + swaps |

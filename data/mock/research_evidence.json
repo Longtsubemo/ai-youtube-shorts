@@ -1,0 +1,264 @@
+{
+  "schema": "mock_research_evidence",
+  "schema_version": 1,
+  "description": "MOCK TEST FIXTURES ONLY. No source here is real and no claim is verified. URLs are fake (example.test) and every note says so. Do not treat any of this as evidence outside the test/mock pipeline.",
+  "topics": [
+    {
+      "topic_id": "t_octopus_hearts",
+      "title": "Why octopuses have three hearts",
+      "sources": [
+        {
+          "title": "Circulatory anatomy of cephalopods (mock fixture)",
+          "url": "https://example.test/source/oct001",
+          "publisher": "Mock Marine Biology Journal",
+          "source_type": "scientific_paper",
+          "publication_date": "2019-04-12",
+          "credibility_tier": "primary",
+          "notes": "MOCK FIXTURE - this paper does not exist. Not real evidence.",
+          "claims": [
+            {
+              "claim_text": "Octopuses have three hearts: two branchial hearts that push blood through the gills and a systemic heart that powers the body.",
+              "dates": []
+            },
+            {
+              "claim_text": "While octopuses swim, the two branchial hearts stop beating because the body diverts oxygen to the systemic heart.",
+              "dates": [
+                {
+                  "date_kind": "discovery_date",
+                  "date": "2019-04-01"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Why octopus blood is blue (mock explainer)",
+          "url": "https://example.test/source/oct002",
+          "publisher": "Mock Ocean Outreach",
+          "source_type": "news_article",
+          "publication_date": "2020-02-03",
+          "credibility_tier": "high_quality_secondary",
+          "notes": "MOCK FIXTURE - not a real article.",
+          "claims": [
+            {
+              "claim_text": "Octopus blood uses copper-based hemocyanin, which means their blood appears blue.",
+              "dates": []
+            },
+            {
+              "claim_text": "Octopuses are probably the smartest invertebrates in the sea.",
+              "dates": []
+            }
+          ]
+        },
+        {
+          "title": "R/octopusowners thread: opening tank lids (mock fixture)",
+          "url": "https://example.test/source/oct003",
+          "publisher": "Mock Aquarium Forum",
+          "source_type": "forum_post",
+          "publication_date": "2023-08-19",
+          "credibility_tier": "discovery",
+          "notes": "MOCK FIXTURE - discovery lead only, never counts as evidence.",
+          "claims": [
+            {
+              "claim_text": "Some owners say a pet octopus may someday learn to open a tank lid.",
+              "dates": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "topic_id": "t_black_hole",
+      "title": "Why can't we see inside a black hole?",
+      "sources": [
+        {
+          "title": "Event horizon dynamics (mock fixture)",
+          "url": "https://example.test/source/bh001",
+          "publisher": "Mock Institute of Astrophysics",
+          "source_type": "scientific_paper",
+          "publication_date": "2019-04-10",
+          "credibility_tier": "primary",
+          "notes": "MOCK FIXTURE - this paper does not exist.",
+          "claims": [
+            {
+              "claim_text": "The event horizon is the last surface beyond which light cannot escape a black hole.",
+              "dates": []
+            },
+            {
+              "claim_text": "The first picture of a black hole's shadow was released in April 2019.",
+              "dates": [
+                {
+                  "date_kind": "announcement_date",
+                  "date": "2019-04-10"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Coverage of the first black hole image (mock news)",
+          "url": "https://example.test/source/bh002",
+          "publisher": "Mock Science News Network",
+          "source_type": "news_article",
+          "publication_date": "2019-04-10",
+          "credibility_tier": "high_quality_secondary",
+          "notes": "MOCK FIXTURE - not a real article.",
+          "claims": [
+            {
+              "claim_text": "The bright ring around the shadow appears because the hot gas is lensed by the black hole's gravity.",
+              "dates": []
+            }
+          ]
+        },
+        {
+          "title": "Space speculation thread (mock fixture)",
+          "url": "https://example.test/source/bh003",
+          "publisher": "Mock Space Forum",
+          "source_type": "forum_post",
+          "publication_date": "2024-01-05",
+          "credibility_tier": "discovery",
+          "notes": "MOCK FIXTURE - lead only.",
+          "claims": [
+            {
+              "claim_text": "A future probe could someday cross the event horizon and send nothing back.",
+              "dates": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "topic_id": "t_ai_agents_computers",
+      "title": "How AI agents actually use computers",
+      "sources": [
+        {
+          "title": "Agent loop reference implementation (mock fixture)",
+          "url": "https://example.test/source/ai001",
+          "publisher": "Mock Robotics Research Lab",
+          "source_type": "technical_documentation",
+          "publication_date": "2024-11-05",
+          "credibility_tier": "primary",
+          "notes": "MOCK FIXTURE - this document does not exist.",
+          "claims": [
+            {
+              "claim_text": "An AI agent observes the screen, decides an action, and executes it step by step.",
+              "dates": []
+            },
+            {
+              "claim_text": "Each executed action changes the screen state, which means the loop can continue with a new observation.",
+              "dates": []
+            }
+          ]
+        },
+        {
+          "title": "Roundup of autonomous agent products (mock news)",
+          "url": "https://example.test/source/ai002",
+          "publisher": "Mock Tech Weekly",
+          "source_type": "news_article",
+          "publication_date": "2025-02-14",
+          "credibility_tier": "high_quality_secondary",
+          "notes": "MOCK FIXTURE - not a real article.",
+          "claims": [
+            {
+              "claim_text": "Human operators are likely to supervise important actions for a long time.",
+              "dates": []
+            },
+            {
+              "claim_text": "I believe agents will reshape how people use computers.",
+              "dates": []
+            }
+          ]
+        },
+        {
+          "title": "Early adopters thread (mock fixture)",
+          "url": "https://example.test/source/ai003",
+          "publisher": "Mock Developer Forum",
+          "source_type": "forum_post",
+          "publication_date": "2025-01-08",
+          "credibility_tier": "discovery",
+          "notes": "MOCK FIXTURE - lead only.",
+          "claims": [
+            {
+              "claim_text": "Early adopters maybe count on agents doing the boring parts of web work.",
+              "dates": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "topic_id": "t_noise_cancellation",
+      "title": "How does noise cancellation actually work?",
+      "sources": [
+        {
+          "title": "Active noise control primer (mock fixture)",
+          "url": "https://example.test/source/nc001",
+          "publisher": "Mock Acoustics Laboratory",
+          "source_type": "technical_documentation",
+          "publication_date": "2020-07-19",
+          "credibility_tier": "primary",
+          "notes": "MOCK FIXTURE - this document does not exist.",
+          "claims": [
+            {
+              "claim_text": "Active noise cancellation works by capturing the ambient wave and inverting it before it reaches the ear.",
+              "dates": []
+            },
+            {
+              "claim_text": "The inverted wave overlaps the original wave, which means the two cancel at the listener's ear.",
+              "dates": []
+            }
+          ]
+        },
+        {
+          "title": "How ANC headphones work (mock article)",
+          "url": "https://example.test/source/nc002",
+          "publisher": "Mock Audio Magazine",
+          "source_type": "news_article",
+          "publication_date": "2022-09-30",
+          "credibility_tier": "high_quality_secondary",
+          "notes": "MOCK FIXTURE - not a real article.",
+          "claims": [
+            {
+              "claim_text": "ANC headphones use small microphones that sample outside noise continuously.",
+              "dates": []
+            },
+            {
+              "claim_text": "The cancellation is less effective for high frequencies probably because timing shifts grow.",
+              "dates": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "topic_id": "t_first_bug",
+      "title": "The first computer bug was a literal moth",
+      "sources": [
+        {
+          "title": "Vintage computing anecdote thread (mock fixture)",
+          "url": "https://example.test/source/fb001",
+          "publisher": "Mock History of Computing Forum",
+          "source_type": "forum_post",
+          "publication_date": "2018-05-20",
+          "credibility_tier": "discovery",
+          "notes": "MOCK FIXTURE - discovery-tier lead only. Not sufficient on its own.",
+          "claims": [
+            {
+              "claim_text": "A moth was taped into the Mark II logbook in 1947.",
+              "dates": [
+                {
+                  "date_kind": "event_date",
+                  "date": "1947-09-09"
+                }
+              ]
+            },
+            {
+              "claim_text": "This anecdote is probably the most cited bug story in computing.",
+              "dates": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
