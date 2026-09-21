@@ -30,7 +30,10 @@ Every artifact is a JSON object with a contract header:
   fields do not bump.
 - `produced_by` records model/provider/prompt version where applicable;
   `null` when not applicable (deterministic stages).
-- `stage` ranges over `pipeline/state.py` `Stage` enum values.
+- `stage` ranges over `pipeline/state.py` `Stage` enum values. Exception: the
+  QA-artifact header labels `script` / `video` / `policy` (§11) are documented
+  MAPPINGS to the existing enum, not new enum members — e.g. `stage="video"`
+  advances pipeline state to the generic `Stage.QUALITY_CHECK`.
 
 Examples below show the `data` portion only (header elided).
 
@@ -778,32 +781,99 @@ writing an artifact. Config lives in `ScenePlanningConfig` /
 
 ## 11. QAResult
 
-Design-time placeholder for generic quality-gate results. **Implemented so
-far: `ScriptQAResult` (§8.1).** This generic shape is reserved for the future
-video/policy QA stages; those stages will likely reuse §8.1's issue/severity/
-gate model.
-
-Used by any QA stage (`script` / `video` / `policy`).
+Generic quality-gate result, used by every QA stage and distinguished by the
+header `stage` label: **`script`** (Stage 5), **`video`** (Stage 8), and
+**`policy`** (Stage 9, design only). **Implemented so far: `ScriptQAResult`
+(§8.1) and `VideoQAResult` (§11.1).** All QA stages share the §8.1
+issue/severity/hard-soft-gate model: any severity-ERROR issue with `gate=hard`
+→ **REJECT**, any soft ERROR → **REVIEW**, otherwise → **PASS**.
 
 ```json
 {
   "qa_result_id": "qa_01J..",
   "run_id": "1c34504001b0",
-  "stage": "policy",
+  "stage": "video",
   "target_ref": "pp_01J..",
-  "verdict": "REVIEW",
+  "verdict": "REJECT",
   "checks": [
-    {"check": "misleading_claims", "outcome": "PASS", "note": "All claims type-consistent."},
-    {"check": "synthetic_media_disclosure", "outcome": "REVIEW", "note": "Features realistic scene; label required."}
+    {"check": "scene_coverage", "outcome": "PASS", "note": "Every plan scene is represented."},
+    {"check": "media_honesty", "outcome": "REJECT", "note": "Nothing may claim a real uploaded video."}
   ],
   "issues": [
-    {"severity": "REVIEW", "message": "Add synthetic-media disclosure.", "refs": []}
+    {"severity": "ERROR", "gate": "hard", "message": "Scene failed generation.", "refs": ["scn_02"]}
   ],
   "checked_at": "2026-09-20T08:30:00+00:00"
 }
 ```
 
-- Same shape for script/video/policy QA; distinguished by `stage`.
+Differences between §11's original sketch and the implemented contracts:
+
+- The envelope `data` payload carries the checks, the issues (split into
+  `issues` / `warnings` / `infos`), the verdict, the target refs, the
+  provenance, and — for video QA — the `video_generation_result_id`,
+  `resumed_from_qa_result_id`, and `topic_id`/`topic_title`/`script_id` echo.
+- Issues carry `severity`, `gate`, `refs`, plus affected scene/artifact ids,
+  so the audit chain ProductionPlan → scene → VideoGenerationResult →
+  artifact → QA issue stays explicit.
+- Header `stage` label: `script`/`video`/`policy` (a §1 documented mapping to
+  pipeline state, not new `Stage` enum members).
+
+### 11.1. VideoQAResult (Stage 8)
+
+`agents/qa/video/models.py`, written to `data/<run_id>/production/qa_result.json`:
+
+```json
+{
+  "schema": "VideoQAResult",
+  "schema_version": 1,
+  "created_at": "2026-09-20T12:00:00.000000+00:00",
+  "run_id": "vqa-demo",
+  "stage": "video",
+  "produced_by": {"prompt_version": null, "provider": null, "model": "VideoQAValidator"},
+  "data": {
+    "qa_result_id": "qa_<sha1(run_id:production_plan_id)[:12]>",
+    "target_ref": "pp_<sha1[:12]>",
+    "topic_id": "t_octopus",
+    "topic_title": "Octopus intelligence",
+    "script_id": "sc_<sha1[:12]>",
+    "video_generation_result_id": "vg_<sha1[:12]>",
+    "overall_verdict": "PASS",
+    "checked_at": "2026-09-20T12:00:00+00:00",
+    "checks": [
+      {"check": "duration_window", "category": "duration_window", "hard_gate": true,
+       "errors": 0, "warnings": 0, "infos": 0, "hard_errors": 0,
+       "passed": true, "outcome": "PASS", "note": "Recorded total duration is within the 30-60s Shorts window. ..."}
+    ],
+    "issues": [],
+    "warnings": [],
+    "infos": [],
+    "resumed_from_qa_result_id": "",
+    "provenance": {"generated_by": "video_qa_agent_v1", "source": "DeterministicVideoQA",
+                   "created_at": "2026-09-20T12:00:00.000000+00:00", "provider": null,
+                   "model": "VideoQAValidator", "prompt_version": "video_qa.v1"}
+  }
+}
+```
+
+- **Inputs:** the Stage-7 `VideoGenerationResult` (its `production_plan_id`
+  must equal the Stage-6 `ProductionPlan`'s id; a mismatch raises before any
+  checks run) plus that plan's metadata.
+- **15 checks** (names == categories, `agents/qa/video/checks.py`): duration
+  window (preferred 30–60s, hard 15/90s), aspect-ratio metadata (9:16 hard /
+  1080x1920 @ 30fps soft, from `plan.global_style`), scene coverage, scene
+  pending, scene failures, scene ordering, timing fidelity, artifact
+  assignment, structure integrity, reference integrity, provider isolation,
+  generation validation (re-runs the Stage-7 validator as a hard gate), overall
+  status consistency, mock recognition (non-mock = hard; mock-with-URI = soft),
+  media honesty. Several are metadata/contract-level because the mock-first
+  pipeline has no assembled media bytes.
+- **Verdict:** hard ERROR → REJECT, soft ERROR → REVIEW, else PASS. No score
+  field (nothing is invented beyond the §11 shape).
+- **IDs:** `qa_<sha1(run_id:production_plan_id)[:12]>`; issues `vqa_00, vqa_01,
+  ...` (stable, content-independent).
+- CLI: `python -m agents.qa.video` (writes the artifact + run state advanced to
+  `Stage.QUALITY_CHECK`; exit 0 PASS, 1 REVIEW/REJECT, 2 error; `--previous`
+  chains `resumed_from_qa_result_id`).
 
 ## 12. AnalyticsRecord
 
@@ -857,10 +927,12 @@ data/<run_id>/
   `rp_<uuid[:12]>` (ResearchPackage, though deterministic `rp_<sha1(run:topic)[:12]>`
   is used by the research agent), `ev_<sha1(source_id:excerpt)[:10]>` (evidence),
   `fc_<sha1(run_id:package_id)[:12]>` (FactCheckResult), `sc_<sha1(run_id:topic_id)[:12]>`
-  (Script), `sqa_<sha1(run_id:script_id)[:12]>` (ScriptQAResult), and the
+  (Script), `sqa_<sha1(run_id:script_id)[:12]>` (ScriptQAResult), the
   Stage-6 `pp_<sha1(run_id:script_id)[:12]>` (ProductionPlan) with sequential
-  scene ids `scn_01..scn_NN`. Topic ids are stable typed slugs (`t_<slug>`).
-  Remaining stages' prefixes (`qa_`/`an_` and the Stage-7 worker result) are
-  still to be settled by those stages.
+  scene ids `scn_01..scn_NN`, the Stage-7 `vg_<sha1(run_id:production_plan_id)[:12]>`
+  result id with `mockva_<sha1(run_id:scene_id)[:12]>` mock artifact ids, and the
+  Stage-8 `qa_<sha1(run_id:production_plan_id)[:12]>` (VideoQAResult). Topic ids
+  are stable typed slugs (`t_<slug>`). Remaining stages' prefixes (`an_` for
+  analytics) are still to be settled by those stages.
 - Whether QA results for all stages share one file each per run or one
   QAResult registry file with stage records.

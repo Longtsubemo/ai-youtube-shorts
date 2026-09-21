@@ -5,10 +5,11 @@ script, plans a scene-by-scene production, generates video on a GPU
 worker, assembles the final YouTube Short, and eventually publishes it —
 end to end.
 
-> **Status: implementing, stage by stage.** Six stages are implemented with
+> **Status: implementing, stage by stage.** Eight stages are implemented with
 > deterministic, network-free mock providers: topic selection, research, fact
-> checking, script generation, script QA, and scene planning. Video generation,
-> publishing, and analytics are not implemented yet.
+> checking, script generation, script QA, scene planning, video generation, and
+> video QA. Voice/audio, assembly, publishing, and analytics are not
+> implemented yet.
 
 ## Long-term pipeline
 
@@ -21,6 +22,8 @@ topic discovery
 → script generation                  Stage 4 ✅ implemented
 → script QA                           Stage 5 ✅ implemented
 → scene planning / production JSON    Stage 6 ✅ implemented
+→ video generation (mock-first)       Stage 7 ✅ implemented
+→ video QA                            Stage 8 ✅ implemented
 → Google Colab video generation (GPU worker)
 → voice / audio
 → video assembly
@@ -52,13 +55,13 @@ topic discovery
 ## Repository layout
 
 ```
-agents/            Implemented stage agents (seo, research, qa/fact_checker, script) + future ones
+agents/            Implemented stage agents (seo, research, qa/*, script, scene_planner, video_generation) + future ones
 pipeline/          Orchestrator scaffold and per-run state model
 video/             Future video build steps (generation, editing, subtitles, audio)
 data/              Working artifacts per run + committed mock fixtures under data/mock/
 prompts/           Prompt templates per agent
 config/            Configuration (populated later; secrets go in .env)
-tests/             Test suite for the implemented stages (466 passing)
+tests/             Test suite for the implemented stages (657 passing)
 ```
 
 ## Current development stage
@@ -79,9 +82,16 @@ Implemented stages (all deterministic, mock-backed, offline):
 - **Stage 6 — Scene Planning** (`agents/scene_planner/`): QA-passed script →
   provider-independent versioned `ProductionPlan` (`production.json`), the
   stable CONTENT → VIDEO boundary; grounded in approved claims only.
+- **Stage 7 — Video Generation** (`agents/video_generation/`): mock-first,
+  provider-independent `VideoGenerationResult` per plan scene; every artifact
+  is explicitly flagged `mock` — nothing looks like real video. Offline,
+  GPU-free, API-free; resume/retry supported.
+- **Stage 8 — Video QA** (`agents/qa/video/`): deterministic quality gate
+  (15 checks) over the generated result → PASS / REVIEW / REJECT with
+  actionable, artifact-traced issues; provider-isolation audit included. Never
+  inspects media bytes (none exist yet).
 
-Not yet implemented: video generation (GPU worker), voice/audio, video
-assembly, publishing, analytics.
+Not yet implemented: voice/audio, video assembly, publishing, analytics.
 
 ## Running the implemented stages
 
@@ -101,8 +111,10 @@ python -m agents.qa.fact_checker             # Stage 3: fact check
 python -m agents.script.script_generator     # Stage 4: script generation
 python -m agents.qa.script                   # Stage 5: script QA
 python -m agents.scene_planner               # Stage 6: scene planning (production.json)
+python -m agents.video_generation            # Stage 7: video generation (mock artifacts)
+python -m agents.qa.video                    # Stage 8: video QA (PASS/REVIEW/REJECT)
 
-# run the whole test suite (466 tests passing)
+# run the whole test suite (657 tests passing)
 python -m pytest tests -q
 ```
 
@@ -111,8 +123,8 @@ in `state.json`.
 
 ## Design documentation
 
-The technical design is documented in `docs/`. Stages 1–6 are implemented;
-the video-generation and marketplace docs remain design-only:
+The technical design is documented in `docs/`. Stages 1–8 are implemented;
+the video-worker and marketplace docs remain design-only:
 
 | Doc | Covers |
 |---|---|
@@ -123,7 +135,7 @@ the video-generation and marketplace docs remain design-only:
 | [FACT_VERIFICATION.md](docs/FACT_VERIFICATION.md) | Separate fact-check stage: PASS/REVIEW/REJECT gating |
 | [POLICY_AND_SAFETY.md](docs/POLICY_AND_SAFETY.md) | YouTube policy checks, human approval gate |
 | [VIDEO_PIPELINE.md](docs/VIDEO_PIPELINE.md) | Shorts target, production.json interface, Colab worker + swaps |
-| [DATA_CONTRACTS.md](docs/DATA_CONTRACTS.md) | The 10 versioned JSON contracts and artifact envelope |
+| [DATA_CONTRACTS.md](docs/DATA_CONTRACTS.md) | The versioned JSON contracts and artifact envelope |
 | [MODEL_STRATEGY.md](docs/MODEL_STRATEGY.md) | Abstract model interface; coding model vs. production LLMs |
 | [ANALYTICS.md](docs/ANALYTICS.md) | Future analytics interface feeding topic selection |
 
@@ -131,9 +143,10 @@ the video-generation and marketplace docs remain design-only:
 
 1. Topic discovery and SEO research
 2. Topic selection / scoring
-3. Research → fact checking → script → script QA → scene planning (Stages 1–6)
-4. Colab video-generation worker consuming the `production.json` contract
-5. Voice, subtitles, video assembly, quality check
+3. Research → fact checking → script → script QA → scene planning → video
+   generation → video QA (Stages 1–8)
+4. Real GPU/Colab video worker consuming the `production.json` contract
+5. Voice, subtitles, video assembly, policy QA
 6. YouTube upload and analytics feedback
 7. Scheduling
 

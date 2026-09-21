@@ -1,0 +1,388 @@
+{
+  "schema": "VideoGenerationResult",
+  "schema_version": 1,
+  "created_at": "2026-09-20T12:00:00.000000+00:00",
+  "run_id": "mock",
+  "stage": "video_generation",
+  "produced_by": {
+    "prompt_version": null,
+    "provider": null,
+    "model": "MockVideoGenerator"
+  },
+  "data": {
+    "video_generation_result_id": "vg_9b7d098451d3",
+    "production_plan_id": "pp_e99181e73b5d",
+    "topic_id": "t_octopus_hearts",
+    "topic_title": "Why octopuses have three hearts",
+    "script_id": "sc_9fc41d7a46b7",
+    "script_qa_result_id": "sqa_e99181e73b5d",
+    "scenes": [
+      {
+        "scene_id": "scn_01",
+        "order": 1,
+        "status": "completed",
+        "request": {
+          "scene_id": "scn_01",
+          "order": 1,
+          "duration_seconds": 4.0,
+          "visual_type": "generated_video",
+          "visual_description": "Vertical close-up of a common octopus moving through clear ocean water; the camera slowly pushes toward the animal while three subtle heart indicators appear on its body.",
+          "generation_prompt": "Vertical documentary-style underwater shot of a common octopus moving slowly across a rocky seabed, cinematic natural lighting, gentle camera push-in, three subtle heart indicators appearing on the body, realistic anatomy, educational visual style, 9:16 vertical composition, roughly four seconds of movement.",
+          "negative_prompt": "distorted anatomy, extra limbs, text artifacts, watermark, blurry image, unrealistic deformation",
+          "narration": "You probably didn't know this, but Octopuses have three hearts",
+          "claim_refs": [
+            "cl_b4ca50a10d"
+          ],
+          "script_line_ids": [
+            "ln_00"
+          ],
+          "on_screen_text": [],
+          "transition": "cut",
+          "visual_continuity_group": "octopus",
+          "asset_requirements": [
+            {
+              "asset_type": "generated_video",
+              "subject": "octopus swimming on a rocky seabed",
+              "quantity": 1,
+              "continuity_group": "octopus"
+            }
+          ]
+        },
+        "attempts": 1,
+        "artifact": {
+          "artifact_id": "mockva_9e0a52e5b616",
+          "asset_type": "generated_video",
+          "subject": "octopus swimming on a rocky seabed",
+          "continuity_group": "octopus",
+          "duration_seconds": 4.0,
+          "provider": "MockVideoGenerator",
+          "mock": true,
+          "uri": "",
+          "note": "MOCK artifact: no video bytes were produced. This record is a deterministic offline stand-in for a future video provider's generated asset."
+        },
+        "failure": "",
+        "failure_retryable": null,
+        "note": ""
+      },
+      {
+        "scene_id": "scn_02",
+        "order": 2,
+        "status": "completed",
+        "request": {
+          "scene_id": "scn_02",
+          "order": 2,
+          "duration_seconds": 5.2,
+          "visual_type": "generated_video",
+          "visual_description": "Wide vertical establishing shot of a calm ocean with a rocky seabed; soft light from above, a gentle camera drift forward, atmospheric and quiet.",
+          "generation_prompt": "Vertical establishing shot of a calm ocean reef with a rocky seabed, soft volumetric light rays from the surface, slow camera drift forward, muted natural palette, atmospheric documentary visual style, 9:16 vertical composition, about five seconds.",
+          "negative_prompt": "distorted anatomy, extra limbs, text artifacts, watermark, blurry image, unrealistic deformation",
+          "narration": "Why octopuses have three hearts? Let's take a closer look at the answer.",
+          "claim_refs": [],
+          "script_line_ids": [
+            "ln_01"
+          ],
+          "on_screen_text": [],
+          "transition": "cut",
+          "visual_continuity_group": "octopus",
+          "asset_requirements": [
+            {
+              "asset_type": "generated_video",
+              "subject": "calm ocean reef establishing shot",
+              "quantity": 1,
+              "continuity_group": "octopus"
+            }
+          ]
+        },
+        "attempts": 1,
+        "artifact": {
+          "artifact_id": "mockva_19aebfebd10a",
+          "asset_type": "generated_video",
+          "subject": "calm ocean reef establishing shot",
+          "continuity_group": "octopus",
+          "duration_seconds": 5.2,
+          "provider": "MockVideoGenerator",
+          "mock": true,
+          "uri": "",
+          "note": "MOCK artifact: no video bytes were produced. This record is a deterministic offline stand-in for a future video provider's generated asset."
+        },
+        "failure": "",
+        "failure_retryable": null,
+        "note": ""
+      },
+      {
+        "scene_id": "scn_03",
+        "order": 3,
+        "status": "completed",
+        "request": {
+          "scene_id": "scn_03",
+          "order": 3,
+          "duration_seconds": 8.4,
+          "visual_type": "motion_graphic",
+          "visual_description": "Animated vertical diagram of an octopus with three heart icons highlighted: two small hearts near the gills and one larger heart in the body, clean educational labels, gentle pulsing highlights.",
+          "generation_prompt": "Animated vertical motion graphic of an octopus with three heart icons adjacent to the gills and body, subtle pulsing highlights, clean science-explainer labeling, smooth motion-graphic animation, 9:16 vertical composition, about eight seconds.",
+          "negative_prompt": "distorted anatomy, extra limbs, text artifacts, watermark, blurry image, unrealistic deformation",
+          "narration": "Octopuses have three hearts: two branchial hearts that push blood through the gills and a systemic heart that powers the body.",
+          "claim_refs": [
+            "cl_b4ca50a10d"
+          ],
+          "script_line_ids": [
+            "ln_02"
+          ],
+          "on_screen_text": [
+            {
+              "kind": "label",
+              "text": "Three hearts",
+              "claim_refs": [
+                "cl_b4ca50a10d"
+              ]
+            }
+          ],
+          "transition": "cut",
+          "visual_continuity_group": "octopus",
+          "asset_requirements": [
+            {
+              "asset_type": "motion_graphic",
+              "subject": "three-heart anatomy diagram",
+              "quantity": 1,
+              "continuity_group": "octopus"
+            }
+          ]
+        },
+        "attempts": 1,
+        "artifact": {
+          "artifact_id": "mockva_3bf6442d9bf8",
+          "asset_type": "motion_graphic",
+          "subject": "three-heart anatomy diagram",
+          "continuity_group": "octopus",
+          "duration_seconds": 8.4,
+          "provider": "MockVideoGenerator",
+          "mock": true,
+          "uri": "",
+          "note": "MOCK artifact: no video bytes were produced. This record is a deterministic offline stand-in for a future video provider's generated asset."
+        },
+        "failure": "",
+        "failure_retryable": null,
+        "note": ""
+      },
+      {
+        "scene_id": "scn_04",
+        "order": 4,
+        "status": "completed",
+        "request": {
+          "scene_id": "scn_04",
+          "order": 4,
+          "duration_seconds": 7.2,
+          "visual_type": "motion_graphic",
+          "visual_description": "Animated vertical motion graphic of an octopus swimming through clear water while two heart icons near the gills pause and one heart stays active.",
+          "generation_prompt": "Animated vertical motion graphic of an octopus swimming through clear water; two heart icons near the gills pause while one heart stays active, clean scientific style, smooth animation, 9:16 vertical composition, about seven seconds.",
+          "negative_prompt": "distorted anatomy, extra limbs, text artifacts, watermark, blurry image, unrealistic deformation",
+          "narration": "While octopuses swim, the two branchial hearts stop beating because the body diverts oxygen to the systemic heart.",
+          "claim_refs": [
+            "cl_f6089873c8"
+          ],
+          "script_line_ids": [
+            "ln_03"
+          ],
+          "on_screen_text": [
+            {
+              "kind": "label",
+              "text": "Hearts pause while swimming",
+              "claim_refs": [
+                "cl_f6089873c8"
+              ]
+            }
+          ],
+          "transition": "cut",
+          "visual_continuity_group": "octopus",
+          "asset_requirements": [
+            {
+              "asset_type": "motion_graphic",
+              "subject": "swimming octopus with paused branchial hearts",
+              "quantity": 1,
+              "continuity_group": "octopus"
+            }
+          ]
+        },
+        "attempts": 1,
+        "artifact": {
+          "artifact_id": "mockva_ce4571806183",
+          "asset_type": "motion_graphic",
+          "subject": "swimming octopus with paused branchial hearts",
+          "continuity_group": "octopus",
+          "duration_seconds": 7.2,
+          "provider": "MockVideoGenerator",
+          "mock": true,
+          "uri": "",
+          "note": "MOCK artifact: no video bytes were produced. This record is a deterministic offline stand-in for a future video provider's generated asset."
+        },
+        "failure": "",
+        "failure_retryable": null,
+        "note": ""
+      },
+      {
+        "scene_id": "scn_05",
+        "order": 5,
+        "status": "completed",
+        "request": {
+          "scene_id": "scn_05",
+          "order": 5,
+          "duration_seconds": 4.4,
+          "visual_type": "generated_image",
+          "visual_description": "Vertical portrait of an octopus with translucent blue-tinted blood visible at the body, dramatic deep-blue lighting over a dark reef background.",
+          "generation_prompt": "Vertical generated image of an octopus showing translucent blue-tinted blood, deep-blue dramatic lighting, dark reef background, realistic texture, documentary science style, 9:16 portrait composition.",
+          "negative_prompt": "distorted anatomy, extra limbs, text artifacts, watermark, blurry image, unrealistic deformation",
+          "narration": "Octopus blood uses copper-based hemocyanin, which means their blood appears blue.",
+          "claim_refs": [
+            "cl_97628e259b"
+          ],
+          "script_line_ids": [
+            "ln_04"
+          ],
+          "on_screen_text": [
+            {
+              "kind": "label",
+              "text": "Blood appears blue",
+              "claim_refs": [
+                "cl_97628e259b"
+              ]
+            }
+          ],
+          "transition": "dissolve",
+          "visual_continuity_group": "octopus",
+          "asset_requirements": [
+            {
+              "asset_type": "generated_image",
+              "subject": "octopus with blue-tinted blood",
+              "quantity": 1,
+              "continuity_group": "octopus"
+            }
+          ]
+        },
+        "attempts": 1,
+        "artifact": {
+          "artifact_id": "mockva_a7d42e634197",
+          "asset_type": "generated_image",
+          "subject": "octopus with blue-tinted blood",
+          "continuity_group": "octopus",
+          "duration_seconds": 4.4,
+          "provider": "MockVideoGenerator",
+          "mock": true,
+          "uri": "",
+          "note": "MOCK artifact: no video bytes were produced. This record is a deterministic offline stand-in for a future video provider's generated asset."
+        },
+        "failure": "",
+        "failure_retryable": null,
+        "note": ""
+      },
+      {
+        "scene_id": "scn_06",
+        "order": 6,
+        "status": "completed",
+        "request": {
+          "scene_id": "scn_06",
+          "order": 6,
+          "duration_seconds": 11.2,
+          "visual_type": "motion_graphic",
+          "visual_description": "Recap motion graphic: the octopus silhouette returns with three heart icons fading in sequence, warm calm light, reassuring closure.",
+          "generation_prompt": "Animated vertical recap motion graphic of an octopus silhouette with three heart icons fading in sequence, warm calm lighting, clean closure style, 9:16 vertical composition, about ten seconds.",
+          "negative_prompt": "distorted anatomy, extra limbs, text artifacts, watermark, blurry image, unrealistic deformation",
+          "narration": "Here's one more detail worth knowing. So here's the bottom line: two branchial hearts that push blood through the gills and a systemic heart that powers the body.",
+          "claim_refs": [
+            "cl_b4ca50a10d"
+          ],
+          "script_line_ids": [
+            "ln_05",
+            "ln_06"
+          ],
+          "on_screen_text": [],
+          "transition": "fade",
+          "visual_continuity_group": "octopus",
+          "asset_requirements": [
+            {
+              "asset_type": "motion_graphic",
+              "subject": "three-heart recap animation",
+              "quantity": 1,
+              "continuity_group": "octopus"
+            }
+          ]
+        },
+        "attempts": 1,
+        "artifact": {
+          "artifact_id": "mockva_c6bab7f1224f",
+          "asset_type": "motion_graphic",
+          "subject": "three-heart recap animation",
+          "continuity_group": "octopus",
+          "duration_seconds": 11.2,
+          "provider": "MockVideoGenerator",
+          "mock": true,
+          "uri": "",
+          "note": "MOCK artifact: no video bytes were produced. This record is a deterministic offline stand-in for a future video provider's generated asset."
+        },
+        "failure": "",
+        "failure_retryable": null,
+        "note": ""
+      },
+      {
+        "scene_id": "scn_07",
+        "order": 7,
+        "status": "completed",
+        "request": {
+          "scene_id": "scn_07",
+          "order": 7,
+          "duration_seconds": 4.8,
+          "visual_type": "text_only",
+          "visual_description": "Clean vertical text card with a one-line follow request over a subtle gradient, gentle drift animation, no distracting elements.",
+          "generation_prompt": "",
+          "negative_prompt": "",
+          "narration": "If you enjoyed this, follow for more science explainers like this one.",
+          "claim_refs": [],
+          "script_line_ids": [
+            "ln_07"
+          ],
+          "on_screen_text": [
+            {
+              "kind": "headline",
+              "text": "Follow for more science!",
+              "claim_refs": []
+            }
+          ],
+          "transition": "cut",
+          "visual_continuity_group": "",
+          "asset_requirements": [
+            {
+              "asset_type": "text_only",
+              "subject": "CTA follow card",
+              "quantity": 1,
+              "continuity_group": ""
+            }
+          ]
+        },
+        "attempts": 1,
+        "artifact": {
+          "artifact_id": "mockva_b4b33cb801e2",
+          "asset_type": "text_only",
+          "subject": "CTA follow card",
+          "continuity_group": "",
+          "duration_seconds": 4.8,
+          "provider": "MockVideoGenerator",
+          "mock": true,
+          "uri": "",
+          "note": "MOCK artifact: no video bytes were produced. This record is a deterministic offline stand-in for a future video provider's generated asset."
+        },
+        "failure": "",
+        "failure_retryable": null,
+        "note": ""
+      }
+    ],
+    "overall_status": "completed",
+    "resumed_from_result_id": "",
+    "provenance": {
+      "generated_by": "video_generation_agent_v1",
+      "source": "MockVideoGenerator",
+      "created_at": "2026-09-20T12:00:00.000000+00:00",
+      "provider": null,
+      "model": "MockVideoGenerator",
+      "prompt_version": "video_generation.v1"
+    }
+  }
+}

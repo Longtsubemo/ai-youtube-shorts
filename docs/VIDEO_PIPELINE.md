@@ -93,9 +93,29 @@ Stages run on the local PC after generation, consuming the same
 
 ## 6. Video QA
 
-`QAResult` with stage = `video`. Checks:
+`QAResult` with stage = `video`. The Stage-8 implementation
+(`agents/qa/video/`, `VideoQAResult` — DATA_CONTRACTS.md §11.1) runs 15
+deterministic checks over the Stage-7 `VideoGenerationResult` +
+`ProductionPlan` metadata:
 
-- duration within 30–60 s; 9:16 vertical frame confirmed
+- duration within 30–60 s; 9:16 vertical frame confirmed (hard 15/90 s bounds)
+- scene coverage / ordering / timing fidelity vs. the ProductionPlan
+- no pending or failed scenes; artifacts well-formed and unique
+- structure and reference integrity (no phantom/blank/missing scene refs)
+- provider isolation (no API/provider/GPU vocabulary leaked into the result)
+- the result passes its own Stage-7 generation validation (hard gate)
+- overall-status consistency; mock recognition (nothing presented as a real
+  file); media honesty (nothing claimed as uploaded/published)
+
+Checks are gated exactly like §8.1: hard ERROR → REJECT, soft ERROR → REVIEW,
+clean → PASS. Several checks are metadata/contract-level ONLY: no media bytes
+exist yet (mock-first), so the checks prove what the Stage-7 records can
+prove, and never pretend to inspect pixels/audio/subtitles.
+
+When audio/subtitles/assembly later exist, the pixel/audio/subtitle-level
+checks (the original list below) become measurable additions to this gate —
+they are NOT implemented yet:
+
 - audio present, not clipped; voice intelligible
 - subtitles present and synchronized; no text cut off
 - no black frames / missing scene at seams

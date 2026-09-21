@@ -50,10 +50,11 @@ Analytics
 Topic Selection feedback loop
 ```
 
-The first **seven** stages are implemented (Topic Selection = Stage 1,
+The first **eight** stages are implemented (Topic Selection = Stage 1,
 Research = Stage 2, Fact Checking = Stage 3, Script Generation = Stage 4,
-Script QA = Stage 5, Scene Planning = Stage 6, Video Generation = Stage 7).
-Everything below Video Generation is design-only documentation until
+Script QA = Stage 5, Scene Planning = Stage 6, Video Generation = Stage 7,
+Video QA = Stage 8).
+Everything below Video QA is design-only documentation until
 implemented.
 
 ## Stage 1 — Topic Selection
@@ -202,8 +203,8 @@ artifact shape (`Source`, `FactClaim`, `ResearchPackage`, `TopicCandidate`,
 
 ## Current verification
 
-Full suite: **583 tests passing** (42 Stage 1 + 80 Stage 2 + 79 Stage 3 +
-53 Stage 4 + 92 Stage 5 + 120 Stage 6 + 117 Stage 7).
+Full suite: **657 tests passing** (42 Stage 1 + 80 Stage 2 + 79 Stage 3 +
+53 Stage 4 + 92 Stage 5 + 120 Stage 6 + 117 Stage 7 + 74 Stage 8).
 
 ## Stage 3 — Fact Checking
 
@@ -522,11 +523,88 @@ Implemented components:
 `tests/video_generation_test_utils.py` builders). CLI:
 `python -m agents.video_generation`.
 
+## Stage 8 — Video QA
+
+**Status:** COMPLETE
+
+**Implementation location:** `agents/qa/video/`
+
+Implemented components:
+
+- `VideoQAIssue` / `VideoQACheckRecord` / `VideoQAConfig` / `VideoQAResult` —
+  versioned Stage-8 artifact (`models.py`): the quality gate over the Stage-7
+  `VideoGenerationResult`. Issue ids `vqa_00, vqa_01, ...` (stable,
+  content-independent), result id
+  `qa_<sha1(run_id:production_plan_id)[:12]>`, envelope header (`stage="video"`)
+  + `data` payload; `STATE_STAGE = Stage.QUALITY_CHECK` records the stage-label
+  ↔ pipeline-state mapping (see enum decision below)
+- **15 deterministic, network-free, GPU-free, API-free checks** (`checks.py`,
+  registered in `CHECKS`): duration window (preferred 30–60s, hard 15–90s),
+  aspect-ratio metadata (9:16 hard / 1080x1920@30fps soft, from the plan's
+  global style), scene coverage, pending/failed scenes, scene ordering, timing
+  fidelity, artifact assignment, structure integrity, reference integrity,
+  provider isolation (scans the result contract, excluding audit provenance),
+  generation validation (re-runs Stage-7's own `validate_video_generation_result`
+  as a hard gate), overall-status consistency, mock recognition (non-mock
+  artifact = hard error; mock artifact with a URI = soft error), and media
+  honesty (no real/uploaded/published video may be claimed). Several checks are
+  deliberately metadata/contract-level because no assembled media bytes exist.
+- Verdict rules (`validator.py`), mirroring §5/§8.1: any severity-ERROR issue
+  with `gate=hard` → **REJECT**; any soft ERROR → **REVIEW**; otherwise →
+  **PASS**. No score field (records nothing §11 has no notion of); `evaluate_video`
+  deliberately does NOT call `result.validate()` so structurally broken results
+  are graded, not raised.
+- `run_video_qa` (`stage.py`): consumes the Stage-7
+  `VideoGenerationResult` + its Stage-6 `ProductionPlan`; a result that targets
+  a DIFFERENT `production_plan_id` raises `VideoQAError` before anything runs.
+- CLI `python -m agents.qa.video` (`__main__.py`; flags `--result` default
+  `data/mock/video_generation_result.json`, `--plan` default
+  `data/mock/production.json`, `--run-id`, `--previous` chains
+  `resumed_from_qa_result_id`, `--out`) — writes
+  `data/<run_id>/production/qa_result.json` + run state advanced to
+  `Stage.QUALITY_CHECK`; exit 0 PASS, 1 REVIEW/REJECT (artifact still written),
+  2 error.
+- Mock fixture `data/mock/video_generation_result.json` — deterministic MOCK
+  Stage-7 result (run `mock`, 7/7 completed, 45.2s, PASS) generated from
+  `data/mock/production.json` so the demo run `data/vqa-demo/` reproduces a
+  clean PASS end-to-end.
+
+### Behavior
+
+- **Boundary:** Stage 8 is VIDEO QA, NOT video assembly. It never inspects
+  pixels/audio/subtitles (none exist yet), never calls a provider, and never
+  makes anything look like real produced video. It grades what the Stage-7
+  records PROVE, keeping the trace chain
+  ProductionPlan → scene → VideoGenerationResult → artifact → QA issue.
+- **Verdict gating mirrors Stage 5:** hard errors REJECT, soft errors REVIEW,
+  clean PASS; per-check `outcome` is independently derivable from the recorded
+  `hard_errors` count.
+- **Provider isolation:** the QA artifact itself must not leak provider/API
+  vocabulary (registry notes avoid denylist terms), so a re-QA never
+  self-flags.
+- **Safety:** the package statically contains no network modules, no GPU/CUDA
+  references, no secret/env reads, and no Stage-9 vocabulary (video_assembly /
+  video_editing / ffmpeg); tests prove a full QA run succeeds with sockets
+  blocked and never writes files.
+- **Stage label vs. pipeline state:** the artifact header `stage` is the
+  generic QAResult label `"video"` (DATA_CONTRACTS.md §11). The numbered Stage 8
+  advances pipeline STATE to the existing generic `Stage.QUALITY_CHECK`; no new
+  `Stage` enum member was added and none was renamed (`STATE_STAGE` = models.py
+  constant, documented in DATA_CONTRACTS.md §11).
+- Documented policy: `docs/DATA_CONTRACTS.md` §11; `docs/VIDEO_PIPELINE.md` §6.
+
+### Test status
+
+74 Stage 8 tests (`tests/test_video_qa_models.py`,
+`tests/test_video_qa_checks.py`, `tests/test_video_qa_validator.py`,
+`tests/test_video_qa_stage.py`, `tests/test_video_qa_safety.py`, plus
+`tests/video_qa_test_utils.py` builders). CLI:
+`python -m agents.qa.video`.
+
 ## Future stages
 
 Planned, **not implemented**:
 
-- Stage 8 — Video QA
 - Stage 9 — YouTube Policy / Publishing QA
 - Stage 10 — Human Approval
 - Stage 11 — YouTube Publishing
@@ -559,6 +637,10 @@ Do not claim any of these are implemented.
     scientific concepts, technological developments, unusual phenomena.
 14. Factual accuracy is a first-class requirement.
 15. AI-generated text is never automatically treated as truth.
+16. The QA artifact-header `stage` label ("video") is the generic §11 label and
+    is NOT a `pipeline/state.py` `Stage` member. Numbered Stage 8 advances
+    pipeline STATE to the existing generic `Stage.QUALITY_CHECK`; Stage enum
+    members are never added or renamed for QA stages.
 
 ## Known future decisions (unresolved)
 
@@ -596,17 +678,18 @@ STAGE 6 COMPLETE (Scene Planning)
     ↓
 STAGE 7 COMPLETE (Video Generation)
     ↓
-STAGE 8 VIDEO QA IS NEXT
+STAGE 8 COMPLETE (Video QA)
+    ↓
+STAGE 9 POLICY / PUBLISHING QA IS NEXT
 ```
 
-Current verification: 583 tests passing.
+Current verification: 657 tests passing.
 
-The next implementation task is **"Implement Stage 8 — Video QA"** — do not
-implement it now. Stage 8 consumes the Stage-7 `VideoGenerationResult`
-(`data/<run_id>/videos/video_generation_result.json`) to QA the produced
-video records (a Stage-8 task must decide the video-QA gate shapes, mirroring
-Stages 5/6; audio, subtitles, assembly, and publishing follow in later
-stages).
+The next implementation task is **"Implement Stage 9 — YouTube Policy /
+Publishing QA"** — do not implement it now. Stage 9 consumes the Stage-8
+`VideoQAResult` (and, once assembled, media metadata) to QA for YouTube policy
+and publishing readiness. Audio, subtitles, assembly, and publishing follow in
+later stages.
 
 ## How to continue
 
@@ -629,11 +712,11 @@ the starting point without guessing.
 ### Current git checkpoint
 
 - **Commit:** `1ad9a2d` — `feat: complete stages 1-6 content pipeline`
-- **Working tree:** NOT committed. Stage 7 was implemented and fully tested
-  this session but was **not committed** (per its own instructions: do not
-  commit until reviewed). Run `git status` to see the new/modified files.
+- **Working tree:** NOT committed. Stages 7 AND 8 were implemented and fully
+  tested this session but were **not committed** (per their instructions: do
+  not commit until reviewed). Run `git status` to see the new/modified files.
 
-### Implemented (Stages 1–7 — COMPLETE)
+### Implemented (Stages 1–8 — COMPLETE)
 
 - Stage 1 — Topic Selection: **COMPLETE**
 - Stage 2 — Research: **COMPLETE**
@@ -642,34 +725,40 @@ the starting point without guessing.
 - Stage 5 — Script QA: **COMPLETE**
 - Stage 6 — Scene Planning: **COMPLETE**
 - Stage 7 — Video Generation: **COMPLETE**
-- **583 tests passing** at the last Stage-7 checkpoint
+- Stage 8 — Video QA: **COMPLETE**
+- **657 tests passing** at the last Stage-8 checkpoint
   (`python -m pytest tests -q`)
 
 ### Current next stage
 
-- **Stage 8 — Video QA: NOT IMPLEMENTED** (out of scope for the Stage-7 task)
-- Boundary artifact produced by Stage 7: `VideoGenerationResult` /
-  `video_generation_result.json` under `data/<run_id>/videos/`
+- **Stage 9 — YouTube Policy / Publishing QA: NOT IMPLEMENTED** (out of scope
+  for the Stage-8 task)
+- Boundary artifact produced by Stage 8: `VideoQAResult` /
+  `qa_result.json` under `data/<run_id>/production/`
 
-### Stage-7 first implementation — do not re-litigate without a bug
+### Stage-8 first implementation — do not re-litigate without a bug
 
-- Package mirrors `agents/scene_planner/` 1:1: `agents/video_generation/`
-  with `models.py`, `validator.py`, `generator.py`, `mock_generator.py`,
-  `stage.py`, `__main__.py`, `__init__.py`; dedicated test utils
-  `tests/video_generation_test_utils.py`; mock fixture
-  `data/mock/production.json`.
-- `MockVideoGenerator` is the FIRST implementation: deterministic, GPU-free,
-  network-free, API-free, provider-independent, driven only by the Stage-6
-  `ProductionPlan`. Artifacts are always `mock=True` with empty `uri` so
-  nothing looks like real video.
-- `VideoGenerator` protocol is the required provider abstraction for a future
-  Colab / GPU / open-source worker (no model names, API fields, or provider
-  syntax anywhere in the contract).
-- Resume/retry is required and implemented: completed assets preserved,
-  retryable failures retried up to `max_attempts` across runs, permanent
-  failures persist, retries never run inside a single run.
-- Stage 8 must NOT be implemented until a Stage-8 task is requested.
-- **Do NOT commit Stage 7** until it has been reviewed.
+- Package mirrors `agents/qa/script/` 1:1: `agents/qa/video/` with `models.py`,
+  `checks.py`, `validator.py`, `stage.py`, `__main__.py`, `__init__.py` (no
+  `scorer.py` — Stage-8 records no score per §11); dedicated test utils
+  `tests/video_qa_test_utils.py`; mock fixture
+  `data/mock/video_generation_result.json`.
+- 15 registered checks (names == categories): duration window (soft 30–60s,
+  hard 15/90s), aspect-ratio metadata (9:16 hard; 1080x1920 / 30fps soft),
+  scene coverage, pending, failures, ordering, timing fidelity, artifact
+  assignment, structure integrity, reference integrity, provider isolation,
+  generation validation (re-runs Stage-7 validator as a hard gate), overall
+  status consistency, mock recognition (hard), media honesty (hard).
+- Gate model mirrors Stages 5/6: hard ERROR → REJECT, soft ERROR → REVIEW,
+  else PASS. No score field; `STATE_STAGE = Stage.QUALITY_CHECK` with a
+  documented stage-label ↔ pipeline-state mapping.
+- Checks operate on result records + plan metadata only: no pixels/audio, no
+  network/GPU/API, no Stage-9 work (video_assembly / video_editing / ffmpeg
+  statically absent).
+- CLI demo `python -m agents.qa.video` runs the committed fixtures → PASS
+  (exit 0) and writes `data/vqa-demo/` (gitignored via `data/*/`).
+- Stage 9 must NOT be implemented until a Stage-9 task is requested.
+- **Do NOT commit Stage 7 or Stage 8** until they have been reviewed.
 
 ### Continuity instruction for the next session
 
@@ -678,8 +767,8 @@ the starting point without guessing.
 3. Read `docs/DATA_CONTRACTS.md`.
 4. Read `docs/FACT_VERIFICATION.md`.
 5. Confirm the current test suite passes
-   (`python -m pytest tests -q` — expect 583 passing).
-6. Implement Stage 8 only, when asked, mirroring the Stage-5 QA stage
-   conventions and consuming the Stage-7 `VideoGenerationResult`.
+   (`python -m pytest tests -q` — expect 657 passing).
+6. Implement Stage 9 only, when asked, mirroring the QA-stage conventions and
+   consuming the Stage-8 `VideoQAResult`.
 7. Do not redo completed stages unless a concrete bug is discovered.
 8. Do not rely on previous OpenCode conversation history.
