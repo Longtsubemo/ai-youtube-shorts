@@ -50,10 +50,11 @@ Analytics
 Topic Selection feedback loop
 ```
 
-The first **six** stages are implemented (Topic Selection = Stage 1,
+The first **seven** stages are implemented (Topic Selection = Stage 1,
 Research = Stage 2, Fact Checking = Stage 3, Script Generation = Stage 4,
-Script QA = Stage 5, Scene Planning = Stage 6). Everything below Scene
-Planning is design-only documentation until implemented.
+Script QA = Stage 5, Scene Planning = Stage 6, Video Generation = Stage 7).
+Everything below Video Generation is design-only documentation until
+implemented.
 
 ## Stage 1 — Topic Selection
 
@@ -201,8 +202,8 @@ artifact shape (`Source`, `FactClaim`, `ResearchPackage`, `TopicCandidate`,
 
 ## Current verification
 
-Full suite: **466 tests passing** (42 Stage 1 + 80 Stage 2 + 79 Stage 3 +
-53 Stage 4 + 92 Stage 5 + 120 Stage 6).
+Full suite: **583 tests passing** (42 Stage 1 + 80 Stage 2 + 79 Stage 3 +
+53 Stage 4 + 92 Stage 5 + 120 Stage 6 + 117 Stage 7).
 
 ## Stage 3 — Fact Checking
 
@@ -428,11 +429,103 @@ Implemented components:
 `tests/scene_planning_test_utils.py` builders). CLI:
 `python -m agents.scene_planner`.
 
+## Stage 7 — Video Generation
+
+**Status:** COMPLETE
+
+**Implementation location:** `agents/video_generation/`
+
+Implemented components:
+
+- `GenerationRequest` / `GeneratedArtifact` / `SceneGenerationResult` /
+  `GenerationFailure` / `VideoGenerationConfig` / `VideoGenerationResult` —
+  versioned Stage-7 model surface (`models.py`): the provider-independent
+  answer to `ProductionPlan` — one per-scene record with the request, the
+  produced artifact (always clearly `mock=True`, empty `uri`, MOCK note for
+  this first implementation), and per-scene status. Result id
+  `vg_<sha1(run_id:production_plan_id)[:12]>`, mock artifact ids
+  `mockva_<sha1(run_id:scene_id)[:12]>`; envelope header + `data` payload
+  with `provenance` (generated_by `video_generation_agent_v1`,
+  source/model `MockVideoGenerator`, versioned ruleset
+  `video_generation.v1`)
+- `VideoGenerator` protocol — the provider-independent generation boundary
+  (`generator.py`); a future Colab / GPU / open-source worker implements the
+  same `generate(plan, config, previous, run_id, created_at)` signature and
+  drops in without changing the stage runner, validator, resume logic, or CLI
+- `MockVideoGenerator` — deterministic, offline, GPU-free, network-free,
+  API-free FIRST implementation (`mock_generator.py`); consumes ONLY the
+  Stage-6 `ProductionPlan` (never invents facts), simulates failures
+  deterministically from `config.failure_scenarios`, and gates un-generatable
+  requests (`request_issue`: generative type without a `generation_prompt`,
+  non-positive duration, blank description → non-retryable failure)
+- `validate_video_generation_result` — deterministic validator with **13
+  rules g01–g13** (`validator.py`): non-empty, unique/ordered scenes, valid
+  statuses, result↔plan scene correspondence (no phantom, no missing), order
+  matching, request/artifact timing preservation, completed-scene artifact
+  invariants, failed-scene message/retry/attempt invariants (a retryable
+  flag at the retry limit is an error), `overall_status` consistency,
+  provenance, **provider isolation** (scans keys AND values against the
+  denylist: runway/veo/sora/luma/algorithms/GPU/CUDA/Colab/cloud/API keys/
+  auth vocab — excludes the top-level provenance audit record), JSON
+  round-trip (skipped for structurally broken results)
+- Resume/retry semantics (`stage.py` + `mock_generator.py`): completed
+  scenes are preserved verbatim and never regenerated; failed retryable
+  scenes are retried while `attempts < config.max_attempts`; pending scenes
+  are processed; non-retryable failures persist; an exhausted retry budget
+  re-records a failure as non-retryable. A `previous` result for a different
+  `production_plan_id` raises `VideoGenerationError` before anything runs
+- `run_video_generation` — stage entrypoint returning a `VideoGenerationOutcome`
+  (`generated=True` only after the result validates against the plan) +
+  `generate_mock_production_plan` re-export + `load_production_plan` /
+  `load_video_generation_result` loaders (`stage.py`)
+- CLI `python -m agents.video_generation` (`__main__.py`; flags
+  `--plan` default `data/mock/production.json`, `--run-id`, `--previous`,
+  `--out`) — writes `data/<run_id>/videos/video_generation_result.json` +
+  run state advanced to `Stage.VIDEO_GENERATION`; exit 0 success, 1 blocked /
+  validation failed (no artifact), 2 error (e.g. mismatched previous)
+- Mock fixture `data/mock/production.json` — deterministic MOCK
+  ProductionPlan (run `mock`, genesis 2026-09-20, 7 octopus scenes) so the
+  demo run `data/vg-demo/` reproduces a full completed result without any
+  provider
+
+### Behavior
+
+- **Boundary:** Stage 7 consumes ONLY the Stage-6 `ProductionPlan`
+  (`production.json`) — the stable CONTENT → VIDEO contract
+  (`docs/DATA_CONTRACTS.md` §10) — and produces a provider-independent
+  `VideoGenerationResult`. It never calls a video API and never renders bytes.
+- **Mock honesty:** every artifact record is flagged `mock=True` with an
+  empty `uri` and a note stating no video bytes were produced. Nothing is ever
+  made to look like real produced video.
+- **Resume/retry:** completed work is preserved exactly; only retryable
+  failures are retried, bounded by `max_attempts` (3 default); permanent
+  failures persist. Retry happens across runs (resume via `--previous`), not
+  inside a run, so deterministic failure scenarios are testable offline.
+- **Provider isolation:** the artifact contract must not leak provider names,
+  API keys, GPU/CUDA requirements, cloud vendors, or runtime assumptions; the
+  validator scans key names and string values against `provider_isolation_denylist`.
+- **Determinism:** identical plan + config + inputs → identical result
+  (`vg_...` / `mockva_...` ids are stable sha1 digests).
+- **Safety:** the package statically contains no network modules, no GPU/CUDA
+  references, no secret/env reads; tests prove a full generation still
+  succeeds with sockets blocked and that it never writes files.
+- Documented policy: `docs/DATA_CONTRACTS.md` §10 (ProductionPlan boundary);
+  future real worker design notes remain in `docs/VIDEO_PIPELINE.md`.
+
+### Test status
+
+117 Stage 7 tests (`tests/test_video_generation_models.py`,
+`tests/test_video_generation_validator.py`,
+`tests/test_video_generation_generator.py`,
+`tests/test_video_generation_stage.py`,
+`tests/test_video_generation_safety.py`, plus
+`tests/video_generation_test_utils.py` builders). CLI:
+`python -m agents.video_generation`.
+
 ## Future stages
 
 Planned, **not implemented**:
 
-- Stage 7 — Production / Colab Video Generation
 - Stage 8 — Video QA
 - Stage 9 — YouTube Policy / Publishing QA
 - Stage 10 — Human Approval
@@ -501,16 +594,19 @@ STAGE 5 COMPLETE (Script QA)
     ↓
 STAGE 6 COMPLETE (Scene Planning)
     ↓
-STAGE 7 VIDEO GENERATION IS NEXT
+STAGE 7 COMPLETE (Video Generation)
+    ↓
+STAGE 8 VIDEO QA IS NEXT
 ```
 
-Current verification: 466 tests passing.
+Current verification: 583 tests passing.
 
-The next implementation task is **"Implement Stage 7 — Production / Colab
-Video Generation"** -- do not implement it now. Stage 7 consumes the
-`ProductionPlan` (`production.json`) -- the Stage-6 boundary -- to drive a GPU
-worker that generates the actual video (audio, subtitles, assembly, and a
-video/policy QA gate follow in later stages).
+The next implementation task is **"Implement Stage 8 — Video QA"** — do not
+implement it now. Stage 8 consumes the Stage-7 `VideoGenerationResult`
+(`data/<run_id>/videos/video_generation_result.json`) to QA the produced
+video records (a Stage-8 task must decide the video-QA gate shapes, mirroring
+Stages 5/6; audio, subtitles, assembly, and publishing follow in later
+stages).
 
 ## How to continue
 
@@ -519,7 +615,71 @@ video/policy QA gate follow in later stages).
 3. Read `docs/DATA_CONTRACTS.md`.
 4. Read `docs/FACT_VERIFICATION.md`.
 5. Confirm the current test suite passes
-   (`python -m pytest tests -q` — expect 466 passing).
-6. Continue with Stage 7 only.
+   (`python -m pytest tests -q` — expect 583 passing).
+6. Continue with Stage 8 only.
+7. Do not redo completed stages unless a concrete bug is discovered.
+8. Do not rely on previous OpenCode conversation history.
+
+## Continuity checkpoint — end of session
+
+This records exactly where the project stopped so a **fresh OpenCode session**
+— with **no reliance on any previous OpenCode conversation history** — knows
+the starting point without guessing.
+
+### Current git checkpoint
+
+- **Commit:** `1ad9a2d` — `feat: complete stages 1-6 content pipeline`
+- **Working tree:** NOT committed. Stage 7 was implemented and fully tested
+  this session but was **not committed** (per its own instructions: do not
+  commit until reviewed). Run `git status` to see the new/modified files.
+
+### Implemented (Stages 1–7 — COMPLETE)
+
+- Stage 1 — Topic Selection: **COMPLETE**
+- Stage 2 — Research: **COMPLETE**
+- Stage 3 — Fact Checking: **COMPLETE**
+- Stage 4 — Script Generation: **COMPLETE**
+- Stage 5 — Script QA: **COMPLETE**
+- Stage 6 — Scene Planning: **COMPLETE**
+- Stage 7 — Video Generation: **COMPLETE**
+- **583 tests passing** at the last Stage-7 checkpoint
+  (`python -m pytest tests -q`)
+
+### Current next stage
+
+- **Stage 8 — Video QA: NOT IMPLEMENTED** (out of scope for the Stage-7 task)
+- Boundary artifact produced by Stage 7: `VideoGenerationResult` /
+  `video_generation_result.json` under `data/<run_id>/videos/`
+
+### Stage-7 first implementation — do not re-litigate without a bug
+
+- Package mirrors `agents/scene_planner/` 1:1: `agents/video_generation/`
+  with `models.py`, `validator.py`, `generator.py`, `mock_generator.py`,
+  `stage.py`, `__main__.py`, `__init__.py`; dedicated test utils
+  `tests/video_generation_test_utils.py`; mock fixture
+  `data/mock/production.json`.
+- `MockVideoGenerator` is the FIRST implementation: deterministic, GPU-free,
+  network-free, API-free, provider-independent, driven only by the Stage-6
+  `ProductionPlan`. Artifacts are always `mock=True` with empty `uri` so
+  nothing looks like real video.
+- `VideoGenerator` protocol is the required provider abstraction for a future
+  Colab / GPU / open-source worker (no model names, API fields, or provider
+  syntax anywhere in the contract).
+- Resume/retry is required and implemented: completed assets preserved,
+  retryable failures retried up to `max_attempts` across runs, permanent
+  failures persist, retries never run inside a single run.
+- Stage 8 must NOT be implemented until a Stage-8 task is requested.
+- **Do NOT commit Stage 7** until it has been reviewed.
+
+### Continuity instruction for the next session
+
+1. Read `docs/PROJECT_PROGRESS.md` (this file) first.
+2. Read `docs/ARCHITECTURE.md`.
+3. Read `docs/DATA_CONTRACTS.md`.
+4. Read `docs/FACT_VERIFICATION.md`.
+5. Confirm the current test suite passes
+   (`python -m pytest tests -q` — expect 583 passing).
+6. Implement Stage 8 only, when asked, mirroring the Stage-5 QA stage
+   conventions and consuming the Stage-7 `VideoGenerationResult`.
 7. Do not redo completed stages unless a concrete bug is discovered.
 8. Do not rely on previous OpenCode conversation history.
