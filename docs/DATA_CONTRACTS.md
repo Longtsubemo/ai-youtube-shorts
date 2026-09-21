@@ -31,9 +31,10 @@ Every artifact is a JSON object with a contract header:
 - `produced_by` records model/provider/prompt version where applicable;
   `null` when not applicable (deterministic stages).
 - `stage` ranges over `pipeline/state.py` `Stage` enum values. Exception: the
-  QA-artifact header labels `script` / `video` / `policy` (§11) are documented
+  QA-artifact header labels `script` / `video` / `policy_qa` (§11) are documented
   MAPPINGS to the existing enum, not new enum members — e.g. `stage="video"`
-  advances pipeline state to the generic `Stage.QUALITY_CHECK`.
+  and `stage="policy_qa"` advance pipeline state to the generic
+  `Stage.QUALITY_CHECK`.
 
 Examples below show the `data` portion only (header elided).
 
@@ -783,9 +784,10 @@ writing an artifact. Config lives in `ScenePlanningConfig` /
 
 Generic quality-gate result, used by every QA stage and distinguished by the
 header `stage` label: **`script`** (Stage 5), **`video`** (Stage 8), and
-**`policy`** (Stage 9, design only). **Implemented so far: `ScriptQAResult`
-(§8.1) and `VideoQAResult` (§11.1).** All QA stages share the §8.1
-issue/severity/hard-soft-gate model: any severity-ERROR issue with `gate=hard`
+**`policy_qa`** (Stage 9). **Implemented so far: `ScriptQAResult`
+(§8.1), `VideoQAResult` (§11.1), and `PolicyQAResult` (§11.2).** All QA
+stages share the §8.1 issue/severity/hard-soft-gate model: any severity-ERROR
+issue with `gate=hard`
 → **REJECT**, any soft ERROR → **REVIEW**, otherwise → **PASS**.
 
 ```json
@@ -815,7 +817,7 @@ Differences between §11's original sketch and the implemented contracts:
 - Issues carry `severity`, `gate`, `refs`, plus affected scene/artifact ids,
   so the audit chain ProductionPlan → scene → VideoGenerationResult →
   artifact → QA issue stays explicit.
-- Header `stage` label: `script`/`video`/`policy` (a §1 documented mapping to
+- Header `stage` label: `script`/`video`/`policy_qa` (a §1 documented mapping to
   pipeline state, not new `Stage` enum members).
 
 ### 11.1. VideoQAResult (Stage 8)
@@ -875,6 +877,82 @@ Differences between §11's original sketch and the implemented contracts:
   `Stage.QUALITY_CHECK`; exit 0 PASS, 1 REVIEW/REJECT, 2 error; `--previous`
   chains `resumed_from_qa_result_id`).
 
+### 11.2. PolicyQAResult (Stage 9)
+
+`agents/qa/policy/models.py`, written to
+`data/<run_id>/production/policy_qa_result.json`. The pre-publication
+**POLICY / SAFETY GATE** over the full chain Script → FactCheckResult →
+ProductionPlan → VideoGenerationResult → VideoQAResult:
+
+```json
+{
+  "schema": "PolicyQAResult",
+  "schema_version": 1,
+  "created_at": "2026-09-20T12:00:00.000000+00:00",
+  "run_id": "pol-demo",
+  "stage": "policy_qa",
+  "produced_by": {"prompt_version": "policy_rules_v1", "provider": null, "model": "PolicyQAValidator"},
+  "data": {
+    "policy_result_id": "pr_<sha1(run_id:target_ref)[:12]>",
+    "target_ref": "pp_<sha1[:12]>",
+    "topic_id": "t_octopus",
+    "topic_title": "Octopus intelligence",
+    "script_id": "sc_<sha1[:12]>",
+    "policy_version": "policy_rules_v1",
+    "overall_verdict": "PASS",
+    "checked_at": "2026-09-20T12:00:00+00:00",
+    "checks": [
+      {"check_id": "P01", "category": "harmful_content", "hard_gate": true,
+       "errors": 0, "warnings": 0, "infos": 0, "hard_errors": 0, "passed": true,
+       "outcome": "PASS", "note": "..."}
+    ],
+    "issues": [],
+    "warnings": [],
+    "infos": [],
+    "risk_summary": {"verdict": "PASS", "errors": 0, "warnings": 0, "infos": 0,
+                     "flagged_categories": [], "highest_risk_severity": "INFO",
+                     "reviewer_note": "Deterministic pre-publication risk assessment. ..."},
+    "classifier_suggestion": "",
+    "resumed_from_policy_result_id": "",
+    "provenance": {"generated_by": "policy_qa_agent_v1", "source": "DeterministicPolicyQA",
+                   "created_at": "2026-09-20T12:00:00.000000+00:00", "provider": null,
+                   "model": "PolicyQAValidator", "prompt_version": "policy_rules_v1"}
+  }
+}
+```
+
+- **Inputs:** the Stage-8 `VideoQAResult` plus its Stage-7
+  `VideoGenerationResult` and Stage-6 `ProductionPlan` (+ Stage-5
+  `FactCheckResult` and Stage-4 `Script`). A `video_generation_result` whose
+  `production_plan_id` differs from the plan's raises `PolicyQAError` before
+  any checks run; a STALE `qa_result` (`target_ref` ≠ the plan id) is graded
+  as a soft P15 REVIEW, not an exception; a missing QA result is also P15.
+- **15 registered checks P01–P15** (`agents/qa/policy/checks.py`, rule
+  metadata in `rules.py`, `policy_version="policy_rules_v1"`): harmful content
+  (hard markers REJECT / soft REVIEW), dangerous instructions (negator
+  guarded), overstatement vs `strong_in_claim=none`, misinformation framing,
+  "actual footage" claims on mock artifacts (hard REJECT), synthetic media of
+  real people/events without disclosure, asset rights/provenance, PII/doxxing,
+  spam metadata, near-duplicate/reused content, advertiser suitability, title/
+  hook content consistency, provenance completeness, unregistered policy
+  version (hard REJECT), prior-gate consistency. Issues carry
+  `policy_rule = "<check>@<policy_version>"` and affected
+  scene/line/claim/asset ids (the §11 `refs` audit chain).
+- **Verdict:** hard ERROR → REJECT, soft ERROR → REVIEW, else PASS; uncertain
+  classifications never resolve to PASS. No score field. Result
+  `id = pr_<sha1(run_id:target_ref)[:12]>`; issues `pol_00, pol_01, ...`
+  (stable, content-independent).
+- **Classifier boundary:** an OPTIONAL deterministic `PolicyRiskClassifier`
+  (`classifier.py`) sees a bounded, context-only summary and may only make the
+  gate STRICTER; the default run uses none and records `classifier_suggestion`
+  empty.
+- CLI: `python -m agents.qa.policy` (writes the artifact + run state advanced
+  to `Stage.QUALITY_CHECK`; exit 0 PASS, 1 REVIEW/REJECT, 2 error;
+  `--previous` chains `resumed_from_policy_result_id`).
+- **Honesty:** the gate is deterministic and NOT a YouTube/platform compliance
+  guarantee (`POLICY_RULESET_NOTE` says exactly this); human approval (Stage 10)
+  and publishing (Stage 11) remain later stages this contract never implements.
+
 ## 12. AnalyticsRecord
 
 `ANALYTICS.md`. Collected after publishing; feeds topic selection.
@@ -916,7 +994,9 @@ data/<run_id>/
 ├── research/           TopicCandidate, TopicSelection, Source, FactClaim,
 │                       ResearchPackage, FactCheckResult
 ├── scripts/            Script, QAResult(script)
-├── production/         ProductionPlan (production.json), QAResult(video), QAResult(policy)
+├── production/         ProductionPlan (production.json), QAResult(video)
+│                       (qa_result.json), QAResult(policy)
+│                       (policy_qa_result.json)
 └── videos/             generated assets + final Short
 ```
 
@@ -931,7 +1011,8 @@ data/<run_id>/
   Stage-6 `pp_<sha1(run_id:script_id)[:12]>` (ProductionPlan) with sequential
   scene ids `scn_01..scn_NN`, the Stage-7 `vg_<sha1(run_id:production_plan_id)[:12]>`
   result id with `mockva_<sha1(run_id:scene_id)[:12]>` mock artifact ids, and the
-  Stage-8 `qa_<sha1(run_id:production_plan_id)[:12]>` (VideoQAResult). Topic ids
+  Stage-8 `qa_<sha1(run_id:production_plan_id)[:12]>` (VideoQAResult), and the
+  Stage-9 `pr_<sha1(run_id:target_ref)[:12]>` (PolicyQAResult). Topic ids
   are stable typed slugs (`t_<slug>`). Remaining stages' prefixes (`an_` for
   analytics) are still to be settled by those stages.
 - Whether QA results for all stages share one file each per run or one

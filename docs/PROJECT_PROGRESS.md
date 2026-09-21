@@ -50,11 +50,11 @@ Analytics
 Topic Selection feedback loop
 ```
 
-The first **eight** stages are implemented (Topic Selection = Stage 1,
+The first **nine** stages are implemented (Topic Selection = Stage 1,
 Research = Stage 2, Fact Checking = Stage 3, Script Generation = Stage 4,
 Script QA = Stage 5, Scene Planning = Stage 6, Video Generation = Stage 7,
-Video QA = Stage 8).
-Everything below Video QA is design-only documentation until
+Video QA = Stage 8, Policy / Publishing QA = Stage 9).
+Everything below Policy / Publishing QA is design-only documentation until
 implemented.
 
 ## Stage 1 — Topic Selection
@@ -203,8 +203,9 @@ artifact shape (`Source`, `FactClaim`, `ResearchPackage`, `TopicCandidate`,
 
 ## Current verification
 
-Full suite: **657 tests passing** (42 Stage 1 + 80 Stage 2 + 79 Stage 3 +
-53 Stage 4 + 92 Stage 5 + 120 Stage 6 + 117 Stage 7 + 74 Stage 8).
+Full suite: **797 tests passing** (42 Stage 1 + 80 Stage 2 + 79 Stage 3 +
+53 Stage 4 + 92 Stage 5 + 120 Stage 6 + 117 Stage 7 + 74 Stage 8 +
+140 Stage 9).
 
 ## Stage 3 — Fact Checking
 
@@ -601,11 +602,105 @@ Implemented components:
 `tests/video_qa_test_utils.py` builders). CLI:
 `python -m agents.qa.video`.
 
+## Stage 9 — Policy / Publishing QA
+
+**Status:** COMPLETE
+
+**Implementation location:** `agents/qa/policy/`
+
+NOTE: mirrors the QA-stage naming convention (like Stages 5/8), but is a
+**deterministic pre-publication POLICY / SAFETY GATE**, not a quality grade.
+
+Implemented components:
+
+- `PolicyIssue` / `PolicyCheckRecord` / `RiskSummary` / `PolicyQAConfig` /
+  `PolicyQAResult` — versioned Stage-9 artifact (`models.py`): the risk gate
+  over the full chain Script → FactCheckResult → ProductionPlan →
+  VideoGenerationResult → VideoQAResult. Issue ids `pol_00, pol_01, ...`,
+  result id `pr_<sha1(run_id:target_ref)[:12]>`, envelope header
+  (`stage="policy_qa"`) + `data` payload; `STATE_STAGE = Stage.QUALITY_CHECK`
+  records the stage-label ↔ pipeline-state mapping (same enum mapping as
+  Stage 8; marked decision below)
+- `POLICY_RULES` P01–P15 — a versioned, deterministic policy registry
+  (`rules.py`, `policy_version="policy_rules_v1"`), Python data (not YAML),
+  exposing `POLICY_CHECK_ORDER`, `POLICY_CATEGORIES` and `POLICY_RULESET_NOTE`:
+  harmful content (P01, hard markers REJECT / soft REVIEW); dangerous
+  instructions with "don't try this at home" negator guard (P02); overstatement
+  of weak facts via the recorded `strong_in_claim=none` (P03, soft); definitive
+  misinformation framing (P04, soft); "actual footage" claims on mock artifacts
+  (P05, hard REJECT); synthetic media of real people/events without disclosure
+  (P06, soft — people/event markers only, not generic "realistic"); asset
+  rights/provenance (P07); PII/doxxing (P08); spam metadata (P09, ≥2 markers);
+  near-duplicate/reused content (P10, overlap ≥0.8 excluding hook/conclusion/
+  transition/CTA purposes); advertiser-suitability (P11, soft without a
+  disclaimer); sensational title/hook absent from content (P12); provenance
+  completeness (P13, soft); unregistered policy version (P14, hard REJECT);
+  prior-gate consistency with Stage-8 (P15: missing QA, non-PASS QA, or a
+  target_ref mismatch → soft REVIEW — a Stage-8 REVIEW can never silently pass)
+- Verdict rules (`validator.py`) mirroring Stages 5/8: any severity-ERROR issue
+  with `gate=hard` → **REJECT**; any soft ERROR → **REVIEW**; otherwise →
+  **PASS**; uncertainty NEVER resolves to PASS. No score field. `run_checks`
+  assigns stable sequential issue ids. Optional deterministic
+  `PolicyRiskClassifier` boundary (`classifier.py`): a bounded, context only
+  suggestion that can only make the gate STRICTER (a deterministic REVIEW/REJECT
+  is never downgraded); default run uses no classifier
+- `evaluate_policy` deliberately does NOT validate the upstream artifacts: it
+  is a gate over arbitrary record shapes, and corrupt/missing inputs produce
+  issues (P13/P15), not exceptions
+- `run_policy_qa` (`stage.py`): consumes the Stage-8 `VideoQAResult` + its
+  Stage-7 `VideoGenerationResult` + Stage-6 `ProductionPlan` + Stage-5
+  `FactCheckResult` + Stage-4 `Script`; a video result that targets a DIFFERENT
+  `production_plan_id` than the plan raises `PolicyQAError` before anything
+  runs (exit 2)
+- CLI `python -m agents.qa.policy` (`__main__.py`; flags `--script`
+  `--fact-check --plan --video-result --qa-result`, defaults to the committed
+  `data/mock/*`, `--run-id` (default `pol-demo`), `--previous` chains
+  `resumed_from_policy_result_id` (loaded as a `PolicyQAResult`), `--policy-version`,
+  `--out`) — writes `data/<run_id>/production/policy_qa_result.json` + run
+  state advanced to `Stage.QUALITY_CHECK`; exit 0 PASS, 1 REVIEW/REJECT
+  (artifact still written), 2 error
+- Mock fixture `data/mock/qa_result.json` — deterministic MOCK Stage-8 result
+  (run `mock`, PASS, `qa_9b7d098451d3`) generated from
+  `data/mock/video_generation_result.json` so the demo run `data/pol-demo/`
+  reproduces a clean PASS end-to-end
+- Safety (`tests/test_policy_qa_safety.py`): the package statically contains
+  no network modules, no GPU/CUDA/hardware tokens (identifier-level audit, so
+  substring artifacts like "tpu" in "purpose" are not false positives), no
+  secret/env reads, and no Stage 10/11 vocabulary (oauth / youtube upload /
+  scheduling / analytics); tests prove a full policy evaluation succeeds with
+  sockets blocked and never writes files
+
+### Behavior
+
+- **Boundary:** Stage 9 is a PRE-PUBLICATION POLICY GATE, not a YouTube
+  compliance engine and not the publishing stage. It grades what the recorded
+  artifacts PROVE. `POLICY_RULESET_NOTE` states explicitly it is "*Not a
+  YouTube or platform compliance guarantee*"; No Stage 10 (human approval) or
+  Stage 11 (upload) code exists anywhere in the package.
+- **Prior-gate honesty:** a Stage-8 REVIEW or a missing/mismatched QA result is
+  a REVIEW under P15 — the policy gate can never quietly convert an unresolved
+  quality finding into a publishable PASS.
+- **Markers are word-aware:** P05/P06 vocabulary only fires for real
+  media/people/event claims (e.g. "actual footage", "the president"), so a
+  harmless "realistic rendering of an octopus" stays benign.
+- **Stage label vs. pipeline state:** the artifact header `stage` is
+  `"policy_qa"` (Stage-9 task label). Numbered Stage 9 advances pipeline STATE
+  to the existing generic `Stage.QUALITY_CHECK`; no `Stage` enum member was
+  added for policy QA (`STATE_STAGE` constant, documented in §11).
+- Documented policy: `docs/DATA_CONTRACTS.md` §11; `docs/POLICY_AND_SAFETY.md`.
+
+### Test status
+
+140 Stage 9 tests (`tests/test_policy_qa_models.py`,
+`tests/test_policy_qa_checks.py`, `tests/test_policy_qa_validator.py`,
+`tests/test_policy_qa_stage.py`, `tests/test_policy_qa_safety.py`, plus
+`tests/policy_qa_test_utils.py` builders). CLI:
+`python -m agents.qa.policy`.
+
 ## Future stages
 
 Planned, **not implemented**:
 
-- Stage 9 — YouTube Policy / Publishing QA
 - Stage 10 — Human Approval
 - Stage 11 — YouTube Publishing
 - Stage 12 — Analytics
@@ -641,6 +736,13 @@ Do not claim any of these are implemented.
     is NOT a `pipeline/state.py` `Stage` member. Numbered Stage 8 advances
     pipeline STATE to the existing generic `Stage.QUALITY_CHECK`; Stage enum
     members are never added or renamed for QA stages.
+17. Stage 9 labels its artifact header `stage` `"policy_qa"` (its task label),
+    and like Stages 5/8 advances pipeline STATE to the existing generic
+    `Stage.QUALITY_CHECK` — no new `Stage` member was added for policy QA.
+18. Stage 9 is a deterministic pre-publication policy/safety GATE with a
+    bounded, fully optional classifier boundary. It is explicitly NOT a
+    YouTube/platform compliance guarantee, and human approval / publishing
+    remain later stages that it never implements.
 
 ## Known future decisions (unresolved)
 
@@ -654,7 +756,6 @@ Do not decide these unless the decision is already implemented:
 - Topic scoring weight tuning
 - Exploration tuning
 - Fact-check corroboration thresholds
-- Exact policy-check implementation
 - Audio/TTS provider
 - Subtitle generation method
 - Video generation model/provider
@@ -680,16 +781,17 @@ STAGE 7 COMPLETE (Video Generation)
     ↓
 STAGE 8 COMPLETE (Video QA)
     ↓
-STAGE 9 POLICY / PUBLISHING QA IS NEXT
+STAGE 9 COMPLETE (Policy / Publishing QA)
+    ↓
+STAGE 10 HUMAN APPROVAL IS NEXT
 ```
 
-Current verification: 657 tests passing.
+Current verification: 797 tests passing.
 
-The next implementation task is **"Implement Stage 9 — YouTube Policy /
-Publishing QA"** — do not implement it now. Stage 9 consumes the Stage-8
-`VideoQAResult` (and, once assembled, media metadata) to QA for YouTube policy
-and publishing readiness. Audio, subtitles, assembly, and publishing follow in
-later stages.
+The next implementation task is **"Implement Stage 10 — Human Approval"** — do
+not implement it now. Stage 10 consumes the Stage-9 `PolicyQAResult` to gate
+publication on a human reviewer decision. YouTube publishing follows in a later
+stage.
 
 ## How to continue
 
@@ -698,8 +800,8 @@ later stages.
 3. Read `docs/DATA_CONTRACTS.md`.
 4. Read `docs/FACT_VERIFICATION.md`.
 5. Confirm the current test suite passes
-   (`python -m pytest tests -q` — expect 583 passing).
-6. Continue with Stage 8 only.
+   (`python -m pytest tests -q` — expect 797 passing).
+6. Continue with Stage 10 only.
 7. Do not redo completed stages unless a concrete bug is discovered.
 8. Do not rely on previous OpenCode conversation history.
 
@@ -712,11 +814,11 @@ the starting point without guessing.
 ### Current git checkpoint
 
 - **Commit:** `1ad9a2d` — `feat: complete stages 1-6 content pipeline`
-- **Working tree:** NOT committed. Stages 7 AND 8 were implemented and fully
+- **Working tree:** NOT committed. Stages 7, 8 AND 9 were implemented and fully
   tested this session but were **not committed** (per their instructions: do
   not commit until reviewed). Run `git status` to see the new/modified files.
 
-### Implemented (Stages 1–8 — COMPLETE)
+### Implemented (Stages 1–9 — COMPLETE)
 
 - Stage 1 — Topic Selection: **COMPLETE**
 - Stage 2 — Research: **COMPLETE**
@@ -726,39 +828,41 @@ the starting point without guessing.
 - Stage 6 — Scene Planning: **COMPLETE**
 - Stage 7 — Video Generation: **COMPLETE**
 - Stage 8 — Video QA: **COMPLETE**
-- **657 tests passing** at the last Stage-8 checkpoint
+- Stage 9 — Policy / Publishing QA: **COMPLETE**
+- **797 tests passing** at the last Stage-9 checkpoint
   (`python -m pytest tests -q`)
 
 ### Current next stage
 
-- **Stage 9 — YouTube Policy / Publishing QA: NOT IMPLEMENTED** (out of scope
-  for the Stage-8 task)
-- Boundary artifact produced by Stage 8: `VideoQAResult` /
-  `qa_result.json` under `data/<run_id>/production/`
+- **Stage 10 — Human Approval: NOT IMPLEMENTED** (out of scope
+  for the Stage-9 task)
+- Boundary artifact produced by Stage 9: `PolicyQAResult` /
+  `policy_qa_result.json` under `data/<run_id>/production/`
 
-### Stage-8 first implementation — do not re-litigate without a bug
+### Stage-9 first implementation — do not re-litigate without a bug
 
-- Package mirrors `agents/qa/script/` 1:1: `agents/qa/video/` with `models.py`,
-  `checks.py`, `validator.py`, `stage.py`, `__main__.py`, `__init__.py` (no
-  `scorer.py` — Stage-8 records no score per §11); dedicated test utils
-  `tests/video_qa_test_utils.py`; mock fixture
-  `data/mock/video_generation_result.json`.
-- 15 registered checks (names == categories): duration window (soft 30–60s,
-  hard 15/90s), aspect-ratio metadata (9:16 hard; 1080x1920 / 30fps soft),
-  scene coverage, pending, failures, ordering, timing fidelity, artifact
-  assignment, structure integrity, reference integrity, provider isolation,
-  generation validation (re-runs Stage-7 validator as a hard gate), overall
-  status consistency, mock recognition (hard), media honesty (hard).
-- Gate model mirrors Stages 5/6: hard ERROR → REJECT, soft ERROR → REVIEW,
-  else PASS. No score field; `STATE_STAGE = Stage.QUALITY_CHECK` with a
-  documented stage-label ↔ pipeline-state mapping.
-- Checks operate on result records + plan metadata only: no pixels/audio, no
-  network/GPU/API, no Stage-9 work (video_assembly / video_editing / ffmpeg
-  statically absent).
-- CLI demo `python -m agents.qa.video` runs the committed fixtures → PASS
-  (exit 0) and writes `data/vqa-demo/` (gitignored via `data/*/`).
-- Stage 9 must NOT be implemented until a Stage-9 task is requested.
-- **Do NOT commit Stage 7 or Stage 8** until they have been reviewed.
+- Package lives in `agents/qa/policy/` with `rules.py` (policy registry),
+  `models.py`, `checks.py`, `classifier.py`, `validator.py`, `stage.py`,
+  `__main__.py`, `__init__.py`; dedicated test utils
+  `tests/policy_qa_test_utils.py`; mock fixture `data/mock/qa_result.json`
+  (deterministic Stage-8 result, run `mock`, PASS).
+- 15 registered checks P01–P15 (deterministic marker/registry based; hard
+  ERROR → REJECT, soft ERROR → REVIEW, clean → PASS; uncertainty never PASS).
+  `policy_version="policy_rules_v1"`; issue `policy_rule` = `{check}@{version}`.
+- Artifact header `stage="policy_qa"` (Stage-9 task label) with
+  `STATE_STAGE = Stage.QUALITY_CHECK` — the same generic pipeline-state mapping
+  Stages 5/8 use; no new `Stage` enum member.
+- Pairing guard: a `video_generation_result`/`qa_result` targeting a different
+  `production_plan_id` raises `PolicyQAError` (CLI exit 2); a STALE QA is a
+  soft P15 REVIEW, not an exception. `--previous` chains
+  `resumed_from_policy_result_id` (loaded as `PolicyQAResult`).
+- Determinism + honesty: same inputs → same result; no network/GPU/API; P05/P06
+  markers only flag real media / real people/events (benign octopus content
+  stays PASS); the gate is explicitly NOT a YouTube compliance guarantee.
+- CLI demo `python -m agents.qa.policy` runs the committed fixtures → PASS
+  (exit 0) and writes `data/pol-demo/` (gitignored via `data/*/`).
+- Stage 10 must NOT be implemented until a Stage-10 task is requested.
+- **Do NOT commit Stage 7, Stage 8, or Stage 9** until they have been reviewed.
 
 ### Continuity instruction for the next session
 
@@ -767,8 +871,8 @@ the starting point without guessing.
 3. Read `docs/DATA_CONTRACTS.md`.
 4. Read `docs/FACT_VERIFICATION.md`.
 5. Confirm the current test suite passes
-   (`python -m pytest tests -q` — expect 657 passing).
-6. Implement Stage 9 only, when asked, mirroring the QA-stage conventions and
-   consuming the Stage-8 `VideoQAResult`.
+   (`python -m pytest tests -q` — expect 797 passing).
+6. Implement Stage 10 only, when asked, mirroring the QA-stage conventions and
+   consuming the Stage-9 `PolicyQAResult`.
 7. Do not redo completed stages unless a concrete bug is discovered.
 8. Do not rely on previous OpenCode conversation history.

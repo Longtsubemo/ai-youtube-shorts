@@ -1,8 +1,16 @@
 # Policy And Safety
 
-Quality-control stage that checks a finished Video against YouTube
-policy, advertiser suitability, and the channel's own standards **before
-publishing**. Design only; nothing is implemented.
+Quality-control stage (a.k.a. **Stage 9 — Policy / Publishing QA**) that
+checks a finished Video against YouTube policy, advertiser suitability, and
+the channel's own standards **before publishing**.
+
+**Status:** IMPLEMENTED as a deterministic, network-free, GPU-free, API-free
+gate in `agents/qa/policy/` (135+ lines of policy rules P01–P15, a CLI, and a
+test suite). The gate is a *pre-publication risk assessment*; it is explicitly
+**NOT a YouTube or platform compliance guarantee**, does not talk to YouTube,
+and does not block or replace the mandatory human approval gate (§7). The
+package deliberately contains no Stage 10 (human approval) or Stage 11
+(YouTube publishing) code.
 
 ## 1. Position in pipeline
 
@@ -38,6 +46,34 @@ near-identical, low-substance variations. The channel's defense is
 genuinely substantive, original, single-topic explainers
 (`CONTENT_STRATEGY.md`).
 
+### 2.1 Implemented checks (Stage 9)
+
+The implemented gate grades what the recorded artifacts PROVE — the
+Script, FactCheckResult, ProductionPlan, VideoGenerationResult and
+VideoQAResult files — with 15 deterministic rules (`policy_version =
+policy_rules_v1`) in `agents/qa/policy/checks.py` (registry:
+`rules.py`):
+
+| Check | Risk area graded | Gate |
+|---|---|---|
+| P01 | Harmful content (hard markers) | hard → REJECT, soft → REVIEW |
+| P02 | Dangerous instructions (negator-guarded) | soft → REVIEW |
+| P03 | Overstatement vs `strong_in_claim=none` | soft → REVIEW |
+| P04 | Definitive misinformation framing | soft → REVIEW |
+| P05 | "Actual footage" claimed while artifact `mock=True` | hard → REJECT |
+| P06 | Synthetic media of real people/events without disclosure | soft → REVIEW |
+| P07 | Asset rights / provenance markers (watermark, copyrighted, ...) | hard/soft |
+| P08 | PII / doxxing leaks | hard/soft |
+| P09 | Spam metadata (≥2 markers) | soft → REVIEW |
+| P10 | Near-duplicate / reused content (overlap ≥0.8) | soft → REVIEW |
+| P11 | Advertiser-sensitive topic without disclaimer | soft → REVIEW |
+| P12 | Sensational title/hook absent from content | soft → REVIEW |
+| P13 | Missing provenance on recorded artifacts | soft → REVIEW |
+| P14 | Unregistered `policy_version` | hard → REJECT |
+| P15 | Stage-8 prior gate missing / non-PASS / stale target_ref | soft → REVIEW |
+
+Uncertain classifications resolve to REVIEW, never to PASS.
+
 ## 3. Verdicts
 
 | Verdict | Meaning | Action |
@@ -63,15 +99,19 @@ production (`DATA_CONTRACTS.md` + `ARCHITECTURE.md` traceability).
 
 ## 5. Output
 
-`QAResult` with:
+`PolicyQAResult` (a §11 `QAResult`, `stage = "policy_qa"`) with:
 
-- stage = `policy`
-- per-check outcomes (PASS/REVIEW/REJECT + notes)
-- overall verdict
-- recommended actions (e.g. "add synthetic-media disclosure",
-  "re-render asset X", "rewrite description")
+- per-check outcomes (PASS/REVIEW/REJECT + counts) for P01–P15,
+- overall verdict,
+- a `risk_summary` (flagged categories + a `reviewer_note`),
+- issues with affected scene/line/claim/asset ids (audit chain) and
+  recommended actions (e.g. "add synthetic-media disclosure",
+  "re-render asset X", "rewrite description").
 
-Stored at `data/<run_id>/` alongside the QA records.
+Written to `data/<run_id>/production/policy_qa_result.json`. The header
+`stage` `"policy_qa"` maps to the generic pipeline state
+`Stage.QUALITY_CHECK` (the same mapping Stages 5/8 use — see `STATE_STAGE`).
+CLI: `python -m agents.qa.policy` (exit 0 PASS, 1 REVIEW/REJECT, 2 error).
 
 ## 6. Positioning vs. other QA
 
@@ -83,6 +123,21 @@ Stored at `data/<run_id>/` alongside the QA records.
 
 They are separate stages with the same `QAResult` shape, different
 `stage` tags (`pipeline/state.py` `Stage` already enumerates them).
+
+### 6.1 Boundary of the implemented gate
+
+- It reads the **recorded artifacts only** (plan scenes, metadata, QA
+  verdicts); the mock-first pipeline has no assembled media bytes, so
+  checks that need rendered pixels/audio remain metadata/contract-level.
+- It never calls YouTube, never reads secrets/env, never uses network,
+  GPU, or an external API, and never writes beyond its own artifact.
+- Marker vocabulary is deliberately *word-aware*: P05/P06 only flag real
+  media / real people-event claims ("actual footage", "the president"),
+  so innocuous "realistic rendering of an octopus" content stays benign
+  and the clean committed fixtures PASS end-to-end.
+- `PASS` never means "platform-approved": the reviewer note records
+  "Not a YouTube or platform compliance guarantee", and §7's human gate
+  remains mandatory.
 
 ## 7. Human approval gate
 
