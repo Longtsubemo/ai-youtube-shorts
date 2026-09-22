@@ -909,7 +909,29 @@ STAGE 10 COMPLETE (Human Approval)
 STAGE 11 YOUTUBE PUBLISHING IS NEXT (not implemented)
 ```
 
-Current verification: 920 tests passing.
+Current verification: 920 tests passing (`python -m pytest tests -q` -> `920 passed`).
+
+**Final end-to-end verification (completed):** Stages 1–10 are implemented and
+the whole pipeline closes with a REAL Stage-10 CLI approval run
+(`python -m agents.human_approval --decision APPROVED --approver-id test-user
+--approver-role owner --notes "Final manual-upload approval"`):
+
+- exit code **0**;
+- decision **APPROVED**;
+- all 5 blocking gates OK (`required_artifacts`, `policy_qa_hard_reject`,
+  `video_qa_hard_reject`, `video_generation_completed`, `review_overrides`);
+- **7 reviewed artifacts** bound by id + canonical `content_sha256`
+  (policy_qa / video_qa / video_result / production_plan / script / script_qa
+  / fact_check);
+- `manual_upload.ready=True`;
+- `data/<run_id>/approval/human_approval_result.json` written and run state
+  advanced to the existing generic `Stage.PUBLISH` in `state.json`;
+- no upload/network/analytics/scheduling action occurred.
+
+Stage 11 (YouTube Publishing) is **NOT IMPLEMENTED** and remains intentionally
+out of scope. Project goal achieved: the pipeline now produces a
+**manual-upload-ready video package** — the user performs the YouTube upload
+manually; no automatic publishing is implemented.
 
 The next implementation task is **"Implement Stage 11 — YouTube Publishing"** —
 do not implement it now. Stage 10's `manual_upload.ready` marks the produced
@@ -936,11 +958,12 @@ stopped without guessing.
 
 ### Repository state
 
-- **HEAD commit:** `5eacbf0` — `feat: implement stage 9 policy QA`
-- **Working tree:** NOT fully committed. The Stage-10 session's changes
-  (implementation + fixtures + tests + doc edits) remain uncommitted (see
-  `git status --porcelain`); per instructions, do not commit anything until
-  reviewed.
+- **HEAD commit:** `0b054d44ecf565e0d7068919b8746ea00179b7bb` —
+  `feat: implement stage 10 human approval`
+- **Working tree:** **CLEAN.** The Stage-10 implementation (package modules,
+  committed fixture, tests, and doc updates) was committed as the HEAD commit
+  above. `git status --porcelain` is empty. Do not commit anything further
+  unless explicitly asked.
 
 ### Completed — Stages 1–10
 
@@ -961,6 +984,14 @@ Generation, Stage 8 Video QA, Stage 9 Policy / Publishing QA, and
   upload.
 - **Full test suite passes: 920 tests** (`python -m pytest tests -q`),
   including 123 Stage 10 tests (models / validator / stage / safety).
+- **Final end-to-end CLI approval verified on the real default path:** exit 0,
+  decision `APPROVED`, all 5 blocking gates OK, 7 reviewed artifacts bound by
+  id + `content_sha256`, `manual_upload.ready=True`,
+  `data/ha-demo/approval/human_approval_result.json` + `state.json`
+  (`current_stage: publish`) written, and no upload/network/analytics/
+  scheduling action. **Project goal achieved:** the pipeline produces a
+  manually upload-ready package; the user performs the YouTube upload
+  manually, and no automatic publishing is implemented.
 - Stage 10 was verified across the APPROVED / CHANGES_REQUESTED / REJECTED,
   hard-gate-blocked-APPROVED, stale-digest-invalidation, override-bound, and
   supersede paths (CLI exits 0 / 1 / 1 / 2 / 1 / 0 / 0), plus the offline
@@ -972,10 +1003,10 @@ Generation, Stage 8 Video QA, Stage 9 Policy / Publishing QA, and
 
 - **Stage 11 — YouTube Publishing is NOT IMPLEMENTED** and is intentionally
   out of scope.
-- **Current project goal:** produce a video package that is ready for MANUAL
-  YouTube upload by the user **and** carry a verifiable human approval record
-  (`manual_upload.ready`). **Automatic YouTube uploading is not part of the
-  current goal.**
+- **Current project goal — ACHIEVED:** produce a video package that is ready
+  for MANUAL YouTube upload by the user **and** carries a verifiable human
+  approval record (`manual_upload.ready`). **Automatic YouTube uploading is
+  not part of the current goal and is not implemented.**
 
 ### Future work (separate, where applicable)
 
