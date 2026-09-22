@@ -34,7 +34,9 @@ Every artifact is a JSON object with a contract header:
   QA-artifact header labels `script` / `video` / `policy_qa` (§11) are documented
   MAPPINGS to the existing enum, not new enum members — e.g. `stage="video"`
   and `stage="policy_qa"` advance pipeline state to the generic
-  `Stage.QUALITY_CHECK`.
+  `Stage.QUALITY_CHECK`. Stage 10's `HumanApprovalResult` header label
+  `stage="human_approval"` similarly maps to the existing generic
+  `Stage.PUBLISH` (§12) — no new enum member is added.
 
 Examples below show the `data` portion only (header elided).
 
@@ -953,9 +955,132 @@ ProductionPlan → VideoGenerationResult → VideoQAResult:
   guarantee (`POLICY_RULESET_NOTE` says exactly this); human approval (Stage 10)
   and publishing (Stage 11) remain later stages this contract never implements.
 
-## 12. AnalyticsRecord
+## 12. HumanApprovalResult (Stage 10)
 
-`ANALYTICS.md`. Collected after publishing; feeds topic selection.
+**Implemented** (`agents/human_approval/`). The mandatory human decision
+record that gates publication. It is the machine-verifiable record of an
+explicit human decision over the EXACT reviewed artifact versions
+(role + stable id + `content_sha256` digest), never a claim that anything was
+uploaded. Written to `data/<run_id>/approval/human_approval_result.json`.
+
+```json
+{
+  "schema": "HumanApprovalResult",
+  "schema_version": 1,
+  "created_at": "2026-09-20T12:00:00.000000+00:00",
+  "run_id": "ha-demo",
+  "stage": "human_approval",
+  "produced_by": {"prompt_version": "human_approval.v1", "provider": null, "model": null},
+  "data": {
+    "approval_id": "ha_<sha1(run_id:target_ref)[:12]>",
+    "target_ref": "pp_e99181e73b5d",
+    "topic_id": "t_octopus_hearts",
+    "topic_title": "Why octopuses have three hearts",
+    "decision": "APPROVED",
+    "approver": {"approver_id": "alice", "role": "reviewer"},
+    "reviewed_artifacts": [
+      {"role": "policy_qa", "artifact_id": "pr_9b7d098451d3", "content_sha256": "<sha256 hex>", "bind": {"bound": true}},
+      {"role": "video_qa", "artifact_id": "qa_9b7d098451d3", "content_sha256": "<sha256 hex>", "bind": {"bound": true}},
+      {"role": "video_result", "artifact_id": "vg_9b7d098451d3", "content_sha256": "<sha256 hex>", "bind": {"bound": true}},
+      {"role": "production_plan", "artifact_id": "pp_e99181e73b5d", "content_sha256": "<sha256 hex>", "bind": {"bound": true}},
+      {"role": "script", "artifact_id": "sc_9fc41d7a46b7", "content_sha256": "<sha256 hex>", "bind": {"bound": true}},
+      {"role": "script_qa", "artifact_id": "sqa_e99181e73b5d", "content_sha256": "<sha256 hex>", "bind": {"bound": true}},
+      {"role": "fact_check", "artifact_id": "fc_41e052643b3a", "content_sha256": "<sha256 hex>", "bind": {"bound": true}}
+    ],
+    "blocking_conditions": [
+      {"code": "required_artifacts", "satisfied": true},
+      {"code": "policy_qa_hard_reject", "satisfied": true},
+      {"code": "video_qa_hard_reject", "satisfied": true},
+      {"code": "video_generation_completed", "satisfied": true},
+      {"code": "review_overrides", "satisfied": true}
+    ],
+    "overridden_verdicts": [],
+    "changes_requested": [],
+    "notes": "ready",
+    "manual_upload": {
+      "ready": true,
+      "note": "Metadata, disclosure labels, and a manual upload remain human steps. Approval does NOT perform or schedule any upload.",
+      "title": "Why octopuses have three hearts"
+    },
+    "supersedes_approval_id": "",
+    "provenance": {
+      "generated_by": "human_approval_gate_v1",
+      "source": "HumanReviewer",
+      "created_at": "2026-09-20T12:00:00.000000+00:00",
+      "provider": null,
+      "model": null,
+      "prompt_version": "human_approval.v1"
+    }
+  }
+}
+```
+
+- **Roles (7, stable order):** `policy_qa`, `video_qa`, `video_result`,
+  `production_plan`, `script`, `script_qa`, `fact_check`. The five REQUIRED
+  roles are `policy_qa`, `video_qa`, `video_result`, `production_plan`, and
+  `script`; `script_qa`/`fact_check` are optional (their id field is
+  `qa_result_id` / `result_id`, and the CLI accepts `--script-qa none` /
+  `--fact-check none` to omit them). A missing REQUIRED role fails CLOSED for
+  EVERY decision: without the complete bundle the stage raises
+  `HumanApprovalError` ("cannot review: missing required ... artifact") and
+  nothing is recorded.
+- **Pairing guards (coherence, fail closed):** the bundle must be internally
+  consistent or the stage raises before evaluating: the `ProductionPlan` id
+  must equal the Stage-9 `PolicyQAResult.target_ref` and the Stage-8
+  `VideoQAResult.target_ref`; the `VideoGenerationResult.production_plan_id`
+  must equal the plan's id; the Stage-7/8 ids must mutually match; the
+  `Script.script_id` must equal the Stage-6 plan's `script_id`; the Stage-5
+  `ScriptQAResult.script_id` must equal the script's id.
+- **Decisions** in `PENDING` / `APPROVED` / `CHANGES_REQUESTED` / `REJECTED`
+  (deliberately DISJOINT from the PASS/REVIEW/REJECT QA vocabulary). Only
+  `APPROVED`/`CHANGES_REQUESTED`/`REJECTED` are writable; `PENDING` is a model
+  value the CLI refuses to write (fail closed). `is_approved` is `True` only
+  for `APPROVED`.
+- **Blocking conditions (codes):** `required_artifacts`,
+  `policy_qa_hard_reject`, `video_qa_hard_reject`, `video_generation_completed`,
+  `review_overrides`. `APPROVED` requires ALL satisfied (else
+  `HumanApprovalError`, nothing written); `CHANGES_REQUESTED`/`REJECTED` are
+  valid under any state and RECORD the unsatisfied conditions for audit.
+  `CHANGES_REQUESTED` additionally requires `changes_requested` or `notes`;
+  `reason` for REJECTED is optional.
+- **Overrides:** only for the `policy_qa` / `video_qa` gates; only when the
+  prior verdict is a soft `REVIEW` (hard REJECT is never overrideable); each
+  override is auto-bound to the `artifact_id` of the reviewed artifact and
+  validated as an accepted `BooleanOperand` that flips the gate to satisfied.
+- **Digests (staleness / supersede):** `content_sha256` = canonical SHA-256
+  of `json.dumps(artifact, sort_keys=True, separators={",", ":"})` over the
+  artifact's `to_dict()` payload. `check_approval_freshness(approval,
+  current_artifacts)` compares digest AND stable id for every bound role; any
+  mismatch → `STALE`/not effective. `is_superseded_by(older, newer)` /
+  `supersedes_approval_id` chain re-review (a decision can never supersede
+  itself).
+- **IDs:** `ha_<sha1(run_id:target_ref)[:12]>` (stable, deterministic);
+  `supersedes_approval_id` must differ from the owner's own id.
+- **Provenance:** the approver is a human, NOT a model/provider — the
+  envelope `produced_by.provider`/`model` and `provenance.provider`/`model`
+  are all `null`, `provenance.generated_by = "human_approval_gate_v1"`,
+  `provenance.source = "HumanReviewer"`, `prompt_version = "human_approval.v1"`.
+- **Manual upload endpoint:** `manual_upload.ready` (`True` ⇔
+  `is_approved`), `manual_upload.title` = the Stage-4 `Script` title, plus a
+  human note that metadata/upload remain manual. Stage 10 contains NO
+  YouTube/network/oauth code (safety suite enforces this).
+- **Stage label vs. pipeline state:** the artifact header `stage` is
+  `"human_approval"` (§1). Numbered Stage 10 advances pipeline STATE to the
+  existing generic `Stage.PUBLISH` (`STATE_STAGE` constant) — no new `Stage`
+  enum member was added; Stage 10 performs no upload.
+- CLI: `python -m agents.human_approval` (defaults to the committed
+  `data/mock/*` fixtures; `--run-id`, `--decision`, `--approver-id`,
+  `--notes`, `--change` repeatable, `--override "gate;check;verdict;justification"`,
+  `--script-qa`/`--fact-check` accept `none`, `--previous` chains supersede,
+  `--check --approval <path>` audit mode, `--out`). Exit 0 APPROVED, 1
+  CHANGES_REQUESTED/REJECTED (artifact still written) or stale in `--check`,
+  2 error. Writes `data/<run_id>/approval/human_approval_result.json` + run
+  state advanced to `Stage.PUBLISH`.
+
+## 13. AnalyticsRecord
+
+`ANALYTICS.md`. Collected after publishing; feeds topic selection (Stage 12,
+not implemented).
 
 ```json
 {
@@ -976,7 +1101,7 @@ ProductionPlan → VideoGenerationResult → VideoQAResult:
 }
 ```
 
-## 13. Versioning and extension policy
+## 14. Versioning and extension policy
 
 - Additive field additions: no version bump.
 - Renames, removals, or semantic changes of existing fields: bump
@@ -986,7 +1111,7 @@ ProductionPlan → VideoGenerationResult → VideoQAResult:
 - Every artifact keeps the header (§1) so any file is self-describing
   and auditable without external lookup.
 
-## 14. Storage layout
+## 15. Storage layout
 
 ```
 data/<run_id>/
@@ -997,10 +1122,12 @@ data/<run_id>/
 ├── production/         ProductionPlan (production.json), QAResult(video)
 │                       (qa_result.json), QAResult(policy)
 │                       (policy_qa_result.json)
+├── approval/           HumanApprovalResult
+│                       (human_approval_result.json)
 └── videos/             generated assets + final Short
 ```
 
-## 15. Open questions
+## 16. Open questions
 
 - ID formats implemented so far: `ts_<uuid[:12]>` (TopicSelection),
   `src_<sha1(url)[:10]>` and `cl_<sha1(text)[:10]>` (research),
@@ -1010,9 +1137,10 @@ data/<run_id>/
   (Script), `sqa_<sha1(run_id:script_id)[:12]>` (ScriptQAResult), the
   Stage-6 `pp_<sha1(run_id:script_id)[:12]>` (ProductionPlan) with sequential
   scene ids `scn_01..scn_NN`, the Stage-7 `vg_<sha1(run_id:production_plan_id)[:12]>`
-  result id with `mockva_<sha1(run_id:scene_id)[:12]>` mock artifact ids, and the
-  Stage-8 `qa_<sha1(run_id:production_plan_id)[:12]>` (VideoQAResult), and the
-  Stage-9 `pr_<sha1(run_id:target_ref)[:12]>` (PolicyQAResult). Topic ids
+  result id with `mockva_<sha1(run_id:scene_id)[:12]>` mock artifact ids, the
+  Stage-8 `qa_<sha1(run_id:production_plan_id)[:12]>` (VideoQAResult), the
+  Stage-9 `pr_<sha1(run_id:target_ref)[:12]>` (PolicyQAResult), and the
+  Stage-10 `ha_<sha1(run_id:target_ref)[:12]>` (HumanApprovalResult). Topic ids
   are stable typed slugs (`t_<slug>`). Remaining stages' prefixes (`an_` for
   analytics) are still to be settled by those stages.
 - Whether QA results for all stages share one file each per run or one

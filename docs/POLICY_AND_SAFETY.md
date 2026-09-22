@@ -141,14 +141,50 @@ They are separate stages with the same `QAResult` shape, different
 
 ## 7. Human approval gate
 
-- Initially **mandatory** before any YouTube upload.
-- The gate presents: policy report, video QA report, script, claims
-  trace, and the finished video.
-- Automating approval is possible **later, only after sufficient
-  testing**; the design keeps the gate a first-class stage so it can be
-  relaxed without surgery.
-- Fail-closed rule: absence of a rejection is not approval.
-  Silent default = REJECT/PENDING.
+**Status:** IMPLEMENTED as **Stage 10** (`agents/human_approval/`). It is a
+machine-verifiable record of an explicit human decision over the exact
+reviewed artifact versions, **not** an automated gate and **not** the
+publishing stage. Full contract in `docs/DATA_CONTRACTS.md` §12 and design in
+`docs/HUMAN_APPROVAL_STAGE10_DESIGN.md`.
+
+- **Mandatory** before any YouTube upload: setup, metadata, and manual upload
+  happen by hand; the stage produces a `ManualUploadReadiness` ready flag
+  (`BooleanOperand "manual_upload"` `True`) plus the upload title.
+- The gate presents: policy report (Stage 9), video QA report (Stage 8),
+  video generation result (Stage 7), production plan (Stage 6), script
+  (Stage 4), and the optional script-QA / fact-check results.
+- **Decisions** (`PENDING` / `APPROVED` / `CHANGES_REQUESTED` / `REJECTED`;
+  reviewed-artifact digests are recorded with every decision):
+  - `APPROVED` — only ever recorded when ALL hard gates are cleared (required
+    artifacts present, no Stage-8/9 hard REJECT, video generation completed,
+    review-verdict overrides satisfied). A blocked APPROVED error is the
+    fail-closed default: nothing is written.
+  - `CHANGES_REQUESTED` / `REJECTED` — valid under any gate state; the
+    blocking conditions that made approval impossible are recorded for audit.
+    `CHANGES_REQUESTED` requires at least one change note (or
+    `changes_requested` requirement).
+  - `PENDING` is a model value but the CLI refuses to write it — *no written
+    decision = no approval* (absence of a rejection is never approval).
+- **Overrides:** a soft `REVIEW` on Stage 8 (`video_qa`) or Stage 9
+  (`policy_qa`) may be overridden to a recorded explainable decision; a hard
+  `REJECT` can never be overridden. Every override is bound to the
+  `artifact_id` of the exact artifact version it reviewed.
+- **Staleness / supersede:** each reviewed artifact records
+  `content_sha256` (canonical SHA-256 of the artifact payload) and `artifacts.bind`
+  records ids; `check_approval_freshness` and `approval_is_effective` fail the
+  digest/id comparison, so a stale approval is detected (`--check
+  --approval <path>`); a newer approval supersedes an earlier one via
+  `supersedes_approval_id`.
+- CLI: `python -m agents.human_approval` (exit 0 APPROVED, 1
+  CHANGES_REQUESTED/REJECTED or stale in `--check` mode, 2 error). Writes
+  `data/<run_id>/approval/human_approval_result.json` + run state advanced to
+  the existing generic `Stage.PUBLISH` (Stage 10 does not implement any upload).
+- Automating approval remains possible **later, only after sufficient
+  testing**; the stage stays a first-class record so a future automated
+  approver produces the same contract.
+- Fail-closed rule: absence of a rejection is not approval — and approval is
+  only ever *recorded*, never *performed*: the endpoint is a MANUAL upload
+  with no Stage-11 (YouTube/network/oauth) code.
 
 ## 8. Open questions
 

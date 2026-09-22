@@ -50,12 +50,12 @@ Analytics
 Topic Selection feedback loop
 ```
 
-The first **nine** stages are implemented (Topic Selection = Stage 1,
+The first **ten** stages are implemented (Topic Selection = Stage 1,
 Research = Stage 2, Fact Checking = Stage 3, Script Generation = Stage 4,
 Script QA = Stage 5, Scene Planning = Stage 6, Video Generation = Stage 7,
-Video QA = Stage 8, Policy / Publishing QA = Stage 9).
-Everything below Policy / Publishing QA is design-only documentation until
-implemented.
+Video QA = Stage 8, Policy / Publishing QA = Stage 9, Human Approval =
+Stage 10). Everything below Human Approval (YouTube publishing, analytics,
+scheduling) is design-only documentation until implemented.
 
 ## Stage 1 — Topic Selection
 
@@ -203,9 +203,9 @@ artifact shape (`Source`, `FactClaim`, `ResearchPackage`, `TopicCandidate`,
 
 ## Current verification
 
-Full suite: **797 tests passing** (42 Stage 1 + 80 Stage 2 + 79 Stage 3 +
+Full suite: **920 tests passing** (42 Stage 1 + 80 Stage 2 + 79 Stage 3 +
 53 Stage 4 + 92 Stage 5 + 120 Stage 6 + 117 Stage 7 + 74 Stage 8 +
-140 Stage 9).
+140 Stage 9 + 123 Stage 10).
 
 ## Stage 3 — Fact Checking
 
@@ -697,11 +697,125 @@ Implemented components:
 `tests/policy_qa_test_utils.py` builders). CLI:
 `python -m agents.qa.policy`.
 
+## Stage 10 — Human Approval
+
+**Status:** COMPLETE
+
+**Implementation location:** `agents/human_approval/`
+
+The mandatory human decision gate between the completed content pipeline and
+any publication. Stage 10 produces a **machine-verifiable record of an
+explicit human decision over the exact reviewed artifact versions**. Design:
+`docs/HUMAN_APPROVAL_STAGE10_DESIGN.md`; contract: `docs/DATA_CONTRACTS.md`
+§12.
+
+Implemented components:
+
+- `ROLES` (7, stable order) + `ROLE_ATTR` / `ROLE_ID_FIELD` mappings
+  (`models.py`): `policy_qa`, `video_qa`, `video_result`, `production_plan`,
+  `script`, `script_qa`, `fact_check`. `REQUIRED_ROLES` (5) = policy_qa,
+  video_qa, video_result, production_plan, script; script_qa/fact_check are
+  optional (`--script-qa none` / `--fact-check none`). A missing REQUIRED role
+  fails CLOSED for every decision (`HumanApprovalError`, nothing recorded).
+- `Approver` / `ReviewedArtifact` / `OverriddenVerdict` / `RequestedChange` /
+  `ManualUploadReadiness` / `HumanApprovalResult` — versioned Stage-10
+  artifact (`models.py`), id `ha_<sha1(run_id:target_ref)[:12]>`; every
+  reviewed artifact records `role`, `artifact_id`, and canonical
+  `content_sha256` (SHA-256 over `json.dumps(to_dict(), sort_keys=True,
+  separators={",", ":"})`).
+- Decision vocabulary `DECISIONS = (PENDING, APPROVED, CHANGES_REQUESTED,
+  REJECTED)` — deliberately DISJOINT from the QA PASS/REVIEW/REJECT brand.
+  `WRITABLE_DECISIONS` excludes PENDING: the CLI refuses to write "no
+  decision" (no written approval = not approved). `is_approved` ⇔
+  `decision == APPROVED`.
+- Blocking conditions `build_blocking_conditions` (`validator.py`): codes
+  `required_artifacts`, `policy_qa_hard_reject`, `video_qa_hard_reject`,
+  `video_generation_completed`, `review_overrides`. `APPROVED` requires ALL
+  satisfied else `HumanApprovalError` (nothing written); CHANGES_REQUESTED /
+  REJECTED are valid under any state and record the unsatisfied conditions
+  for audit. CHANGES_REQUESTED needs `changes_requested` requirements or
+  `notes`.
+- Pairing guards (`stage.py`, fail closed, all before any evaluation): plan id
+  == policy `target_ref` == video-QA `target_ref`; video_result
+  `production_plan_id` == plan id; video_result result_id == video-QA
+  `video_generation_result_id`; script `script_id` == plan `script_id`; QA
+  `script_id` == script id; `supersedes_approval_id` != own id.
+- Overrides (soft REVIEW only, hard REJECT never): an `--override
+  "gate;check;verdict;justification"` is validated against the prior
+  REVIEW verdict and auto-bound to the reviewed artifact's `artifact_id`, so
+  the record proves exactly which version the override reviewed.
+- Freshness / supersede (`validator.py`): `check_approval_freshness(approval,
+  current_artifacts)` re-derives the digests and ids of every bound role and
+  flags STALE on any mismatch; `is_superseded_by` / `approval_is_effective`
+  chain re-review; the CLI `--check --approval <path>` audit mode re-reads the
+  current fixtures and reports `digests_fresh` / whether the approval is
+  effective and gates-clear without writing anything.
+- Provenance honesty: the approver is a human, NOT a model/provider —
+  `produced_by`/`provenance` have `provider == model == None`,
+  `generated_by="human_approval_gate_v1"`, `source="HumanReviewer"`,
+  `prompt_version="human_approval.v1"`.
+- CLI `python -m agents.human_approval` (`__main__.py`; defaults to the
+  committed `data/mock/*` fixtures; `--decision --approver-id --notes
+  --change --override --previous --check --approval --out`; optional
+  `--policy-result / --qa-result / --video-result / --plan / --script /
+  --script-qa / --fact-check`) — writes
+  `data/<run_id>/approval/human_approval_result.json` + run state advanced to
+  the existing generic **`Stage.PUBLISH`** (via `STATE_STAGE`; no new `Stage`
+  enum member, no upload performed). Exit 0 APPROVED, 1 CHANGES_REQUESTED /
+  REJECTED (artifact still written) or STALE in `--check` mode, 2 error
+  (missing/incoherent inputs, invalid decision/approver/override, blocked
+  APPROVED under a hard gate).
+- Committed fixture `data/mock/policy_qa_result.json` — deterministic MOCK
+  Stage-9 result (run `mock`, PASS, `pr_9b7d098451d3`) generated by the
+  Stage-9 validator over the existing mock fixtures so the demo run
+  `data/ha-demo/` reproduces an APPROVED manual-upload-ready end-to-end from
+  Stages 1–10 without any provider.
+- `manual_upload` readiness: `ready == is_approved`; `title` = Stage-4 Script
+  title; note states metadata + manual upload remain human steps.
+
+### Behavior
+
+- **Fixed, honest brand:** the decisions are `APPROVED / CHANGES_REQUESTED /
+  REJECTED / PENDING` — never QA's PASS/REVIEW/REJECT — so a "REVIEW" human
+  decision can never be mistaken for an override or vice versa.
+- **Fail-closed APPROVED:** an approval is only recorded when every hard gate
+  is demonstrably clear, and the CLI refuses to write a `PENDING` "no
+  decision". Absence of approval is never approval.
+- **Exact-version review proof:** `content_sha256` binds the decision to the
+  canonical bytes of the artifacts actually on disk; `--check` re-digests and
+  reports STALE the moment anything changes (e.g. a later re-render or an
+  edited script), independent of human memory.
+- **Pairing is the anti-confusion boundary:** the bundle must target one plan
+  end to end (policy, video QA, video result, script) or the stage raises
+  before a decision can be recorded.
+- **Overrides are soft-and-accountable only:** a soft Stage-8 REVIEW can be
+  overridden with justification and is bound to the reviewed artifact; a hard
+  REJECT can never be overridden into approval.
+- **Stage label vs. pipeline state:** the artifact header `stage` is
+  `"human_approval"`. Numbered Stage 10 advances pipeline STATE to the
+  existing generic `Stage.PUBLISH`; no new `Stage` enum member was added and
+  none was renamed.
+- **Manual endpoint only:** the package statically contains no network
+  modules, no GPU/CUDA tokens, no secret/env reads, no oauth/googleapiclient,
+  and no Stage-11 vocabulary (youtube_upload/upload_video/scheduling/
+  analytics); the safety suite proves a full approval succeeds with sockets
+  blocked, never writes files during evaluation, and never fabricates a
+  provider/model or a Stage-11 mention.
+- Documented policy: `docs/DATA_CONTRACTS.md` §12;
+  `docs/POLICY_AND_SAFETY.md` §7.
+
+### Test status
+
+123 Stage 10 tests (`tests/test_human_approval_models.py`,
+`tests/test_human_approval_validator.py`,
+`tests/test_human_approval_stage.py`, `tests/test_human_approval_safety.py`,
+plus `tests/human_approval_test_utils.py` builders). CLI:
+`python -m agents.human_approval`.
+
 ## Future stages
 
 Planned, **not implemented**:
 
-- Stage 10 — Human Approval
 - Stage 11 — YouTube Publishing
 - Stage 12 — Analytics
 - Stage 13 — Automated Scheduling / Orchestration
@@ -743,6 +857,13 @@ Do not claim any of these are implemented.
     bounded, fully optional classifier boundary. It is explicitly NOT a
     YouTube/platform compliance guarantee, and human approval / publishing
     remain later stages that it never implements.
+19. Stage 10 (human approval) brands its decisions with a vocabulary DISJOINT
+    from QA's PASS/REVIEW/REJECT (`APPROVED` / `CHANGES_REQUESTED` /
+    `REJECTED` / `PENDING`), binds every reviewed artifact by stable id +
+    canonical `content_sha256`, fail-closes: APPROVED needs all gates clear
+    and PENDING is never writable, and advances pipeline STATE to the existing
+    generic `Stage.PUBLISH` while performing NO upload (the endpoint is a
+    manual-upload readiness flag).
 
 ## Known future decisions (unresolved)
 
@@ -783,15 +904,17 @@ STAGE 8 COMPLETE (Video QA)
     ↓
 STAGE 9 COMPLETE (Policy / Publishing QA)
     ↓
-STAGE 10 HUMAN APPROVAL IS NEXT
+STAGE 10 COMPLETE (Human Approval)
+    ↓
+STAGE 11 YOUTUBE PUBLISHING IS NEXT (not implemented)
 ```
 
-Current verification: 797 tests passing.
+Current verification: 920 tests passing.
 
-The next implementation task is **"Implement Stage 10 — Human Approval"** — do
-not implement it now. Stage 10 consumes the Stage-9 `PolicyQAResult` to gate
-publication on a human reviewer decision. YouTube publishing follows in a later
-stage.
+The next implementation task is **"Implement Stage 11 — YouTube Publishing"** —
+do not implement it now. Stage 10's `manual_upload.ready` marks the produced
+package as ready for a MANUAL YouTube upload by the user; automatic YouTube
+publishing may follow in a later stage.
 
 ## How to continue
 
@@ -800,69 +923,65 @@ stage.
 3. Read `docs/DATA_CONTRACTS.md`.
 4. Read `docs/FACT_VERIFICATION.md`.
 5. Confirm the current test suite passes
-   (`python -m pytest tests -q` — expect 797 passing).
-6. Continue with Stage 10 only.
+   (`python -m pytest tests -q` — expect 920 passing).
+6. Continue with Stage 11 only.
 7. Do not redo completed stages unless a concrete bug is discovered.
 8. Do not rely on previous OpenCode conversation history.
 
 ## Continuity checkpoint — end of session
 
-This records exactly where the project stopped so a **fresh OpenCode session**
-— with **no reliance on any previous OpenCode conversation history** — knows
-the starting point without guessing.
+Single snapshot so a **fresh OpenCode session** — with **no reliance on any
+previous OpenCode conversation history** — knows exactly where the project
+stopped without guessing.
 
-### Current git checkpoint
+### Repository state
 
-- **Commit:** `1ad9a2d` — `feat: complete stages 1-6 content pipeline`
-- **Working tree:** NOT committed. Stages 7, 8 AND 9 were implemented and fully
-  tested this session but were **not committed** (per their instructions: do
-  not commit until reviewed). Run `git status` to see the new/modified files.
+- **HEAD commit:** `5eacbf0` — `feat: implement stage 9 policy QA`
+- **Working tree:** NOT fully committed. The Stage-10 session's changes
+  (implementation + fixtures + tests + doc edits) remain uncommitted (see
+  `git status --porcelain`); per instructions, do not commit anything until
+  reviewed.
 
-### Implemented (Stages 1–9 — COMPLETE)
+### Completed — Stages 1–10
 
-- Stage 1 — Topic Selection: **COMPLETE**
-- Stage 2 — Research: **COMPLETE**
-- Stage 3 — Fact Checking: **COMPLETE**
-- Stage 4 — Script Generation: **COMPLETE**
-- Stage 5 — Script QA: **COMPLETE**
-- Stage 6 — Scene Planning: **COMPLETE**
-- Stage 7 — Video Generation: **COMPLETE**
-- Stage 8 — Video QA: **COMPLETE**
-- Stage 9 — Policy / Publishing QA: **COMPLETE**
-- **797 tests passing** at the last Stage-9 checkpoint
-  (`python -m pytest tests -q`)
+Stage 1 Topic Selection, Stage 2 Research, Stage 3 Fact Checking, Stage 4
+Script Generation, Stage 5 Script QA, Stage 6 Scene Planning, Stage 7 Video
+Generation, Stage 8 Video QA, Stage 9 Policy / Publishing QA, and
+**Stage 10 Human Approval** are all **COMPLETE**.
 
-### Current next stage
+- **Stage 10 = Human Approval**, implemented in **`agents/human_approval/`**
+  (`models.py`, `validator.py`, `stage.py`, `__main__.py`, `__init__.py`).
+- Stage 10 records an explicit human decision over the exact reviewed
+  artifact versions (7 roles, stable ids + canonical `content_sha256`),
+  with decisions `APPROVED / CHANGES_REQUESTED / REJECTED / PENDING` (PENDING
+  never writable), hard cleaning gates that block APPROVED fail-closed, soft
+  REVIEW-only overrides bound to the reviewed artifact, digest-based staleness
+  detection, supersede chaining, and a `manual_upload` readiness flag. It
+  advances state to the existing generic `Stage.PUBLISH` and performs NO
+  upload.
+- **Full test suite passes: 920 tests** (`python -m pytest tests -q`),
+  including 123 Stage 10 tests (models / validator / stage / safety).
+- Stage 10 was verified across the APPROVED / CHANGES_REQUESTED / REJECTED,
+  hard-gate-blocked-APPROVED, stale-digest-invalidation, override-bound, and
+  supersede paths (CLI exits 0 / 1 / 1 / 2 / 1 / 0 / 0), plus the offline
+  safety audit (sockets blocked, no writes, no Stage-11 vocabulary).
+- **Stage 10 does NOT implement publishing** — it marks a produced package as
+  ready for a MANUAL YouTube upload.
 
-- **Stage 10 — Human Approval: NOT IMPLEMENTED** (out of scope
-  for the Stage-9 task)
-- Boundary artifact produced by Stage 9: `PolicyQAResult` /
-  `policy_qa_result.json` under `data/<run_id>/production/`
+### Not implemented (out of scope)
 
-### Stage-9 first implementation — do not re-litigate without a bug
+- **Stage 11 — YouTube Publishing is NOT IMPLEMENTED** and is intentionally
+  out of scope.
+- **Current project goal:** produce a video package that is ready for MANUAL
+  YouTube upload by the user **and** carry a verifiable human approval record
+  (`manual_upload.ready`). **Automatic YouTube uploading is not part of the
+  current goal.**
 
-- Package lives in `agents/qa/policy/` with `rules.py` (policy registry),
-  `models.py`, `checks.py`, `classifier.py`, `validator.py`, `stage.py`,
-  `__main__.py`, `__init__.py`; dedicated test utils
-  `tests/policy_qa_test_utils.py`; mock fixture `data/mock/qa_result.json`
-  (deterministic Stage-8 result, run `mock`, PASS).
-- 15 registered checks P01–P15 (deterministic marker/registry based; hard
-  ERROR → REJECT, soft ERROR → REVIEW, clean → PASS; uncertainty never PASS).
-  `policy_version="policy_rules_v1"`; issue `policy_rule` = `{check}@{version}`.
-- Artifact header `stage="policy_qa"` (Stage-9 task label) with
-  `STATE_STAGE = Stage.QUALITY_CHECK` — the same generic pipeline-state mapping
-  Stages 5/8 use; no new `Stage` enum member.
-- Pairing guard: a `video_generation_result`/`qa_result` targeting a different
-  `production_plan_id` raises `PolicyQAError` (CLI exit 2); a STALE QA is a
-  soft P15 REVIEW, not an exception. `--previous` chains
-  `resumed_from_policy_result_id` (loaded as `PolicyQAResult`).
-- Determinism + honesty: same inputs → same result; no network/GPU/API; P05/P06
-  markers only flag real media / real people/events (benign octopus content
-  stays PASS); the gate is explicitly NOT a YouTube compliance guarantee.
-- CLI demo `python -m agents.qa.policy` runs the committed fixtures → PASS
-  (exit 0) and writes `data/pol-demo/` (gitignored via `data/*/`).
-- Stage 10 must NOT be implemented until a Stage-10 task is requested.
-- **Do NOT commit Stage 7, Stage 8, or Stage 9** until they have been reviewed.
+### Future work (separate, where applicable)
+
+Real production infrastructure remains future work: live research/evidence
+providers, Colab/GPU generation workers, TTS, subtitle rendering, video
+assembly, actual media rendering, and Stage-11 YouTube publishing.
 
 ### Continuity instruction for the next session
 
@@ -871,8 +990,9 @@ the starting point without guessing.
 3. Read `docs/DATA_CONTRACTS.md`.
 4. Read `docs/FACT_VERIFICATION.md`.
 5. Confirm the current test suite passes
-   (`python -m pytest tests -q` — expect 797 passing).
-6. Implement Stage 10 only, when asked, mirroring the QA-stage conventions and
-   consuming the Stage-9 `PolicyQAResult`.
+   (`python -m pytest tests -q` — expect 920 passing).
+6. Do NOT implement Stage 11 (YouTube publishing) or any later stage unless
+   explicitly asked; the goal is a manual-upload-ready video package with a
+   verifiable human approval record, not publishing.
 7. Do not redo completed stages unless a concrete bug is discovered.
 8. Do not rely on previous OpenCode conversation history.

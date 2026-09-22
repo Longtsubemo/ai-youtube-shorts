@@ -5,11 +5,11 @@ script, plans a scene-by-scene production, generates video on a GPU
 worker, assembles the final YouTube Short, and eventually publishes it —
 end to end.
 
-> **Status: implementing, stage by stage.** Eight stages are implemented with
+> **Status: implementing, stage by stage.** Ten stages are implemented with
 > deterministic, network-free mock providers: topic selection, research, fact
-> checking, script generation, script QA, scene planning, video generation, and
-> video QA. Voice/audio, assembly, publishing, and analytics are not
-> implemented yet.
+> checking, script generation, script QA, scene planning, video generation,
+> video QA, policy/publishing QA, and the human approval gate. Voice/audio,
+> assembly, publishing, and analytics are not implemented yet.
 
 ## Long-term pipeline
 
@@ -24,6 +24,8 @@ topic discovery
 → scene planning / production JSON    Stage 6 ✅ implemented
 → video generation (mock-first)       Stage 7 ✅ implemented
 → video QA                            Stage 8 ✅ implemented
+→ policy / publishing QA              Stage 9 ✅ implemented
+→ human approval                      Stage 10 ✅ implemented
 → Google Colab video generation (GPU worker)
 → voice / audio
 → video assembly
@@ -55,13 +57,13 @@ topic discovery
 ## Repository layout
 
 ```
-agents/            Implemented stage agents (seo, research, qa/*, script, scene_planner, video_generation) + future ones
+agents/            Implemented stage agents (seo, research, qa/*, script, scene_planner, video_generation, human_approval) + future ones
 pipeline/          Orchestrator scaffold and per-run state model
 video/             Future video build steps (generation, editing, subtitles, audio)
 data/              Working artifacts per run + committed mock fixtures under data/mock/
 prompts/           Prompt templates per agent
 config/            Configuration (populated later; secrets go in .env)
-tests/             Test suite for the implemented stages (657 passing)
+tests/             Test suite for the implemented stages (920 passing)
 ```
 
 ## Current development stage
@@ -90,8 +92,28 @@ Implemented stages (all deterministic, mock-backed, offline):
   (15 checks) over the generated result → PASS / REVIEW / REJECT with
   actionable, artifact-traced issues; provider-isolation audit included. Never
   inspects media bytes (none exist yet).
+- **Stage 9 — Policy / Publishing QA** (`agents/qa/policy/`): deterministic
+  pre-publication policy/safety gate (15 rules P01–P15) over the full
+  Script → FactCheck → ProductionPlan → VideoGeneration → VideoQA chain →
+  `PolicyQAResult` (`policy_qa_result.json`); hard errors REJECT, soft errors
+  REVIEW, uncertain never PASS; explicitly **NOT** a YouTube compliance
+  guarantee, and human approval / publishing stay later stages.
+- **Stage 10 — Human Approval** (`agents/human_approval/`): a
+  machine-verifiable record of an explicit human decision over the exact
+  reviewed artifact versions (role + stable id + canonical `content_sha256`
+  digest). Decisions `PENDING / APPROVED / CHANGES_REQUESTED / REJECTED` (a
+  disjoint brand from QA's PASS/REVIEW/REJECT). `APPROVED` fail-closes on any
+  blocking condition (missing required artifact, Stage-8/9 hard REJECT, video
+  not completed, unsatisfied review overrides); CLI refuses to write `PENDING`
+  (no written decision = no approval). Soft REVIEW overrides are bound to the
+  reviewed artifact id; hard REJECT is never overrideable. Staleness is
+  detected by re-digesting current artifacts (`--check --approval <path>`),
+  and re-review chains `supersedes_approval_id`. Advances state to the generic
+  `Stage.PUBLISH`; the endpoint is a **MANUAL upload** (`manual_upload.ready`)
+  — Stage 10 performs no YouTube/network/oauth work.
 
-Not yet implemented: voice/audio, video assembly, publishing, analytics.
+Not yet implemented: voice/audio, video assembly, publishing (Stage 11),
+analytics.
 
 ## Running the implemented stages
 
@@ -113,8 +135,10 @@ python -m agents.qa.script                   # Stage 5: script QA
 python -m agents.scene_planner               # Stage 6: scene planning (production.json)
 python -m agents.video_generation            # Stage 7: video generation (mock artifacts)
 python -m agents.qa.video                    # Stage 8: video QA (PASS/REVIEW/REJECT)
+python -m agents.qa.policy                   # Stage 9: policy/publishing QA (PASS/REVIEW/REJECT)
+python -m agents.human_approval              # Stage 10: human approval (APPROVED/CHANGES_REQUESTED/REJECTED)
 
-# run the whole test suite (657 tests passing)
+# run the whole test suite (920 tests passing)
 python -m pytest tests -q
 ```
 
@@ -123,7 +147,7 @@ in `state.json`.
 
 ## Design documentation
 
-The technical design is documented in `docs/`. Stages 1–8 are implemented;
+The technical design is documented in `docs/`. Stages 1–10 are implemented;
 the video-worker and marketplace docs remain design-only:
 
 | Doc | Covers |
@@ -133,7 +157,8 @@ the video-worker and marketplace docs remain design-only:
 | [TOPIC_SELECTION.md](docs/TOPIC_SELECTION.md) | External signals, cold start, exploration/exploitation |
 | [RESEARCH_PIPELINE.md](docs/RESEARCH_PIPELINE.md) | Evidence-backed claims, source credibility tiers, claim/source/date model |
 | [FACT_VERIFICATION.md](docs/FACT_VERIFICATION.md) | Separate fact-check stage: PASS/REVIEW/REJECT gating |
-| [POLICY_AND_SAFETY.md](docs/POLICY_AND_SAFETY.md) | YouTube policy checks, human approval gate |
+| [POLICY_AND_SAFETY.md](docs/POLICY_AND_SAFETY.md) | YouTube policy checks (implemented gate), human approval gate |
+| [HUMAN_APPROVAL_STAGE10_DESIGN.md](docs/HUMAN_APPROVAL_STAGE10_DESIGN.md) | Stage-10 design: decision vocabulary, hard gates, digests, overrides |
 | [VIDEO_PIPELINE.md](docs/VIDEO_PIPELINE.md) | Shorts target, production.json interface, Colab worker + swaps |
 | [DATA_CONTRACTS.md](docs/DATA_CONTRACTS.md) | The versioned JSON contracts and artifact envelope |
 | [MODEL_STRATEGY.md](docs/MODEL_STRATEGY.md) | Abstract model interface; coding model vs. production LLMs |
@@ -144,11 +169,12 @@ the video-worker and marketplace docs remain design-only:
 1. Topic discovery and SEO research
 2. Topic selection / scoring
 3. Research → fact checking → script → script QA → scene planning → video
-   generation → video QA (Stages 1–8)
-4. Real GPU/Colab video worker consuming the `production.json` contract
-5. Voice, subtitles, video assembly, policy QA
-6. YouTube upload and analytics feedback
-7. Scheduling
+   generation → video QA → policy QA (Stages 1–9)
+4. Human approval gate (Stage 10)
+5. Real GPU/Colab video worker consuming the `production.json` contract
+6. Voice, subtitles, video assembly
+7. YouTube upload and analytics feedback
+8. Scheduling
 
 Each step keeps the file-based contracts so earlier stages can run and
 be tested standalone.

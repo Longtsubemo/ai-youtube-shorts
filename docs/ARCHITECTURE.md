@@ -1,8 +1,10 @@
 # Architecture
 
 This document defines the target architecture for the automated faceless
-YouTube Shorts channel. It is a **design document**: nothing beyond the
-initial scaffold (see `README.md`) is implemented yet.
+YouTube Shorts channel. It is a **design document**; the pipeline up to and
+including Stages 1–10 (topic selection → ... → human approval) is implemented
+(see `README.md`), while the GPU worker, audio/subtitles/assembly, YouTube
+publishing, and analytics remain design-only.
 
 ## 1. Purpose
 
@@ -49,7 +51,7 @@ other.
 |---|---|---|
 | Orchestrator | `pipeline/orchestrator.py` | Drives stages, tracks state, resumes runs |
 | Run state | `pipeline/state.py` | Persisted per-run stage/status/artifacts |
-| Agent stages | `agents/` | topic/seo/research/script/scene_planning/qa logic |
+| Agent stages | `agents/` | topic/seo/research/script/scene_planning/qa/human_approval logic |
 | GPU worker | `video/generation/` | Consumes `production.json`, returns video artifacts |
 | Audio | `video/audio/` | TTS / voice track |
 | Subtitles | `video/subtitles/` | Caption generation |
@@ -79,7 +81,8 @@ data/<run_id>/
 ├── state.json
 ├── research/      research package, fact-check results, sources, claims
 ├── scripts/       script, script-QA result
-├── production/    scene plan, production.json
+├── production/    scene plan, production.json, video-/policy-QA results
+├── approval/      human approval record (human_approval_result.json)
 └── videos/        generated assets and final Short
 ```
 
@@ -106,6 +109,18 @@ each produced; `state.json` is the source of truth for resuming.
 Publishing requires human approval until the pipeline has proven safe
 and reliable. The gate sits between policy/publish QA and YouTube
 upload. See `POLICY_AND_SAFETY.md`.
+
+**Implemented as Stage 10** (`agents/human_approval/`): a machine-verifiable
+record of an explicit human decision over the exact reviewed artifact
+versions — 7 roles (`policy_qa`, video/policy QA targets, plan, script,
+script QA, fact check), each bound by stable id + canonical `content_sha256`
+digest, decisions `APPROVED / CHANGES_REQUESTED / REJECTED / PENDING`, a
+fail-closed APPROVED (all hard gates clear, PENDING never writable), soft
+REVIEW-only overrides, digest-based staleness checks, and supersede chaining.
+It advances run state to the existing generic `Stage.PUBLISH` and marks the
+package `manual_upload.ready` — Stage 10 performs NO upload. Design:
+`docs/HUMAN_APPROVAL_STAGE10_DESIGN.md`; contract: `docs/DATA_CONTRACTS.md`
+§12.
 
 ## 5. Replaceability boundaries
 
@@ -149,6 +164,12 @@ writes `production.json` and waits for a worker result.
 7. Policy/publish QA + human approval + YouTube upload
 8. Analytics collection and feedback into topic selection
 9. Scheduling
+
+Implementation status as of the Stage-10 checkpoint: items 1–7 are fully
+implemented through the human approval gate (Stages 1–10) with mock-first,
+offline, deterministic providers; the real Colab GPU worker, audio/subtitles/
+assembly, YouTube publishing (Stage 11), analytics, and scheduling remain
+future work.
 
 ## 9. Open decisions
 
