@@ -1,8 +1,13 @@
 # Minimal core dependencies for the current scaffold.
-# No AI-provider SDKs are added yet; they come in with the agent stages.
+# Real-provider SDKs are optional runtime deps used only behind an explicit
+# --provider gemini opt-in; the default mock path never needs them.
 
 python-dotenv>=1.0,<2
 
 # Stage 1 - topic discovery / selection
 pyyaml>=6.0,<7          # config/topic_selection.yaml
 pytest>=7.0,<9          # test suite
+
+# Gemini provider (optional; required only for --provider gemini)
+google-genai>=2.23,<3   # official Gemini SDK
+pydantic>=2,<3          # structured-output schemas (pulled by google-genai too)

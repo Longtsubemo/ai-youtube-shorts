@@ -12,13 +12,20 @@ under data/<run_id>/.
 from __future__ import annotations
 
 import argparse
+import os
 import uuid
 from pathlib import Path
 
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - python-dotenv is a declared dep
+    load_dotenv = None
+
 from agents.seo.config import DEFAULT_CONFIG_PATH, load_config
 from agents.seo.history import SelectionHistory
+from agents.seo.provider import TopicCandidateProviderError, build_topic_candidate_provider
 from agents.seo.result import TopicSelection
-from agents.seo.stage import load_candidates, load_history, run_topic_selection
+from agents.seo.stage import load_history, run_topic_selection
 from pipeline.state import PipelineState, Stage
 
 
@@ -32,7 +39,13 @@ def main() -> int:
         "--candidates",
         type=Path,
         default=Path("data") / "mock" / "topic_candidates.json",
-        help="candidate JSON (default: mock dataset)",
+        help="candidate JSON (default: mock dataset; ignored when --provider gemini)",
+    )
+    parser.add_argument(
+        "--provider",
+        choices=("mock", "gemini"),
+        default="mock",
+        help="candidate source (default: mock/local JSON; gemini requires GEMINI_API_KEY)",
     )
     parser.add_argument(
         "--history",
@@ -44,8 +57,20 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=None, help="output path for the TopicSelection artifact")
     args = parser.parse_args()
 
+    if load_dotenv is not None:
+        load_dotenv()  # honour GEMINI_API_KEY/GEMINI_MODEL from .env (ignored by git)
+
     config = load_config(args.config)
-    candidates = load_candidates(args.candidates, config)
+    try:
+        provider = build_topic_candidate_provider(args.provider, config=config, candidates_path=args.candidates)
+        candidates = provider.list_candidates()
+    except TopicCandidateProviderError as exc:
+        print(f"[topic_selector] provider error: {exc.message}")
+        return 2
+    except Exception as exc:
+        print(f"[topic_selector] provider error: {type(exc).__name__}: {exc}")
+        return 2
+    print(f"[topic_selector] provider: {args.provider} ({len(candidates)} candidate(s))")
 
     if args.history:
         history = load_history(args.history)
@@ -56,6 +81,8 @@ def main() -> int:
 
     run_id = args.run_id or uuid.uuid4().hex[:12]
     selection = run_topic_selection(candidates, history, config, run_id=run_id)
+    if args.provider == "gemini":
+        selection.produced_by = dict(provider.produced_by)
 
     out_path = args.out or Path("data") / run_id / "research" / "topic_selection.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)

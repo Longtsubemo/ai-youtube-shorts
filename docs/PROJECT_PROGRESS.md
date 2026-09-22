@@ -103,6 +103,39 @@ Implemented components:
 
 CLI: `python -m agents.seo.topic_selector`.
 
+### Gemini integration — Stage 1: IN PROGRESS / FOUNDATION COMPLETE
+
+The **provider foundation** and **Stage-1 candidate sourcing via Gemini** are
+implemented; Stages 2–6 are NOT yet wired to Gemini (each keeps its mock-first
+default). Scope intentionally limited: Stage 1 candidates only; scoring,
+ranking, replay, and deterministic validation stay the final gate.
+
+- New package `providers/gemini/` — `errors.py`, `config.py`,
+  `structured.py`, `client.py`, `topic_provider.py` (provider-specific code;
+  the SDK is imported lazily, never by an `agents/` stage).
+- `agents/seo/provider.py` — `TopicCandidateProvider` protocol,
+  `MockTopicCandidateProvider`, and `build_topic_candidate_provider()` factory.
+  Default provider remains **mock**; the gemini path requires `GEMINI_API_KEY`.
+- CLI opt-in: `python -m agents.seo.topic_selector --provider gemini`
+  (default `mock`). A Gemini run stamps envelope `produced_by` and per-candidate
+  `provenance` (`provider="gemini"`, `model`, `prompt_version`).
+- Prompt: `prompts/seo/topic_candidates-v1.txt` (structured-output discipline:
+  candidates only, no invented evidence, no fabricated URLs, no research claims).
+- Env/config: `GEMINI_API_KEY` (required), `GEMINI_MODEL` (default
+  `gemini-3.5-flash-lite`) via `.env`/environment. `.env.example` updated.
+- Security: the key never appears in repr, exceptions, logs, or artifacts.
+- Tests: `tests/test_gemini_config.py`, `test_gemini_client.py`,
+  `test_gemini_topic_provider.py`, `test_topic_candidate_provider.py`,
+  `test_topic_selector_cli.py`, `test_gemini_security.py` (all offline;
+  no network, no real key). Real-network integration is gated by
+  `GEMINI_INTEGRATION_TESTS=1` (`tests/test_gemini_integration.py`).
+
+### Test status (updated)
+
+Stage 1 now includes 42 original + 38 Gemini/provider tests =
+**80 Stage-1-related tests**; full suite: **958 passed, 1 skipped**
+(`python -m pytest tests -q`).
+
 ## Stage 2 — Research Pipeline
 
 **Status:** COMPLETE
@@ -909,7 +942,8 @@ STAGE 10 COMPLETE (Human Approval)
 STAGE 11 YOUTUBE PUBLISHING IS NEXT (not implemented)
 ```
 
-Current verification: 920 tests passing (`python -m pytest tests -q` -> `920 passed`).
+Current verification: 958 tests passing (`python -m pytest tests -q` ->
+`958 passed, 1 skipped`).
 
 **Final end-to-end verification (completed):** Stages 1–10 are implemented and
 the whole pipeline closes with a REAL Stage-10 CLI approval run
@@ -945,7 +979,7 @@ publishing may follow in a later stage.
 3. Read `docs/DATA_CONTRACTS.md`.
 4. Read `docs/FACT_VERIFICATION.md`.
 5. Confirm the current test suite passes
-   (`python -m pytest tests -q` — expect 920 passing).
+   (`python -m pytest tests -q` — expect 958 passing, 1 skipped).
 6. Continue with Stage 11 only.
 7. Do not redo completed stages unless a concrete bug is discovered.
 8. Do not rely on previous OpenCode conversation history.
@@ -956,14 +990,21 @@ Single snapshot so a **fresh OpenCode session** — with **no reliance on any
 previous OpenCode conversation history** — knows exactly where the project
 stopped without guessing.
 
-### Repository state
+### Repository state (Gemini foundation work)
 
-- **HEAD commit:** `0b054d44ecf565e0d7068919b8746ea00179b7bb` —
-  `feat: implement stage 10 human approval`
-- **Working tree:** **CLEAN.** The Stage-10 implementation (package modules,
-  committed fixture, tests, and doc updates) was committed as the HEAD commit
-  above. `git status --porcelain` is empty. Do not commit anything further
-  unless explicitly asked.
+- The Stage-1 **Gemini foundation** (`providers/gemini/`, `agents/seo/provider.py`,
+  `prompts/seo/topic_candidates-v1.txt`, offline tests, `.env.example`,
+  `requirements.txt` additions, CLI `--provider mock|gemini` opt-in) is
+  **implemented and uncommitted** in the working tree; the added Stage-1 tests
+  are green (suite: **958 passed, 1 skipped**). This work was NOT committed.
+  Hooks/by-line may differ from the HEAD commit below. Do not commit unless
+  explicitly asked to.
+- HEAD (= the last committed state before this foundation) —
+  `0b054d44ecf565e0d7068919b8746ea00179b7bb` — `feat: implement stage 10 human approval`.
+- The Stage-1 Gemini slice is **Stage 1 only**: no Stage 2–6 / 7–11 code changes,
+  no generative stages, no Stage-11 publishing work.
+- The uncommitted Gemini work is NOT part of a clean commit; `git status`
+  shows modified/new files listed prior. Do not amend or reword commits.
 
 ### Completed — Stages 1–10
 
@@ -1021,7 +1062,7 @@ assembly, actual media rendering, and Stage-11 YouTube publishing.
 3. Read `docs/DATA_CONTRACTS.md`.
 4. Read `docs/FACT_VERIFICATION.md`.
 5. Confirm the current test suite passes
-   (`python -m pytest tests -q` — expect 920 passing).
+   (`python -m pytest tests -q` — expect 958 passing, 1 skipped).
 6. Do NOT implement Stage 11 (YouTube publishing) or any later stage unless
    explicitly asked; the goal is a manual-upload-ready video package with a
    verifiable human approval record, not publishing.

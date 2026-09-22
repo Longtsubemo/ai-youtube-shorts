@@ -1,14 +1,21 @@
 # Gemini Provider Integration — Design Report
 
-**Status:** RESEARCH / DESIGN ONLY — **NOT IMPLEMENTED.**
+**Status:** STAGE 1 FOUNDATION **IMPLEMENTED** — Stages 2–6 still DESIGN ONLY.
 
 This document records the inspection/design pass over the existing Stages 1–6
-implementation and the exact plan for introducing a real Gemini provider
+implementation and the plan for introducing a real Gemini provider
 without breaking the deterministic mock providers, data contracts, provenance,
 tests, or the Stage 1–6 boundaries and determinism.
 
-Stages 1–10 are complete and deterministic (HEAD `0b054d44`), 920 tests pass.
-Stage 11 (YouTube upload) remains out of scope.
+Stages 1–10 are complete and deterministic (HEAD `0b054d44`), **958 tests pass
+(1 skipped)**. Stage 11 (YouTube upload) remains out of scope.
+
+The Stage-1 slice of this plan is implemented (see **[H] Implemented —
+Stage 1 slice** below): a reusable `providers/gemini/` layer plus the
+`agents/seo/provider.py` seam, used by Stage 1 (topic selection) via an explicit
+`--provider gemini` CLI opt-in. The default mock path is byte-for-byte
+unchanged. Stages 2, 3, 4, and 6 keep mock-first defaults; the adapter classes
+for those stages (section B) are NOT yet implemented.
 
 ---
 
@@ -169,24 +176,71 @@ persisting. Concretely:
 
 ## G. Explicit statement
 
-**Gemini provider integration is NOT IMPLEMENTED — design only.** No new files,
-no SDK, no config changes, no requirement changes. Stage 1 and 5 remain
-deterministic with no seam; Stages 2, 3, 4, 6 keep mock-first defaults; all
-contracts, provenance schemes, ID rules, and the 920-test suite are preserved.
+**Stage 1 Gemini integration IS IMPLEMENTED; Stages 2–6 Gemini adapters are
+design only.** New files for the Stage-1 slice: `providers/gemini/` +
+`agents/seo/provider.py` + `prompts/seo/topic_candidates-v1.txt` + offline
+tests. Default paths stay `None → Mock*`; the mock runner, contracts,
+provenance schemes, and ID rules are unchanged; the full suite (958 passed,
+1 skipped) is green. Stages 2, 3, 4, and 6 keep mock-first defaults until their
+adapters are implemented.
 
 ---
 
-## H. Adoption checklist (when implementing — not now)
+## H. Implemented — Stage 1 slice
 
-1. Add `agents/llm/gateway.py` — `ModelProvider` / `ModelRequest` /
+The following were implemented for Stage 1 (topic selection) only:
+
+1. `providers/gemini/errors.py` — `GeminiProviderError` hierarchy
+   (configuration / authentication / API / timeout / malformed-response /
+   schema-validation / unexpected). No raw SDK exception escapes the provider.
+2. `providers/gemini/config.py` — `GeminiConfig` (api_key, model, timeout,
+   max_retries, temperature, max_output_tokens). Key from `GEMINI_API_KEY`
+   (required) via `from_env()`; model from `GEMINI_MODEL` (default
+   `gemini-3.5-flash-lite`). `repr`/`redacted()` never expose the key.
+3. `providers/gemini/structured.py` — parse + Pydantic-validate the model
+   response into the stage contract (`GeminiMalformedResponseError`,
+   `GeminiSchemaValidationError`).
+4. `providers/gemini/client.py` — `GeminiClient` (lazy `google.genai` import —
+   importing the provider never imports the SDK), bounded retries on
+   408/429/5xx + timeouts only, classification to the error hierarchy,
+   injectable `raw_client`/`sleep` for offline tests.
+5. `providers/gemini/topic_provider.py` — `GeminiTopicProvider` implementing
+   Stage 1's `TopicCandidateProvider` seam; returns validated `TopicCandidate`s
+   and stamps `produced_by = {provider: "gemini", model, prompt_version}`.
+6. `agents/seo/provider.py` — `TopicCandidateProvider` protocol +
+   `MockTopicCandidateProvider` (existing mock behavior) +
+   `build_topic_candidate_provider()` factory (default `mock`; `gemini` requires a key).
+7. `agents/seo/topic_selector.py` — `--provider {mock,gemini}` opt-in; provider
+   failure exits with code 2 and never writes a partial artifact.
+8. `prompts/seo/topic_candidates-v1.txt` — versioned Stage-1 prompt
+   (`{candidate_count}`, `{pillars}`, `{topic_types}` placeholders).
+9. `requirements.txt` — `google-genai>=2.23,<3`, `pydantic>=2,<3` (optional /
+   only needed behind the opt-in). `.env.example` documents `GEMINI_API_KEY` /
+   `GEMINI_MODEL`.
+10. Offline tests: `tests/gemini_test_utils.py`, `test_gemini_config.py`,
+    `test_gemini_client.py`, `test_gemini_topic_provider.py`,
+    `test_topic_candidate_provider.py`, `test_topic_selector_cli.py`,
+    `test_gemini_security.py` (key-leak regression). Real-network integration
+    is gated by `GEMINI_INTEGRATION_TESTS=1` (`tests/test_gemini_integration.py`).
+
+Key leak safety: the API key never appears in repr, exception text, redacted
+metadata, or artifacts — enforced by `test_gemini_security.py` and covered in
+the CLI gemini-path tests.
+
+## H₂. Adoption checklist (remaining — Stages 2–6)
+
+1. Add `providers/gemini/gateway.py` — `ModelProvider` / `ModelRequest` /
    `ModelResponse` (canonicalizing `MODEL_STRATEGY.md` §2).
-2. Add `agents/llm/gemini.py` — `GeminiModelProvider` (lazy import, `.env`
+2. Add `providers/gemini/client.py` `GeminiClient` (done for Stage 1) and
+   extend it for the required stage shapes (lazy import, `.env`
    `GEMINI_API_KEY`).
-3. Add the 5 stage adapters (`GeminiResearchProvider`, `GeminiEvidenceProvider`,
-   `GeminiVerifier`, `GeminiScriptGenerator`, `GeminiScenePlanner`) behind the
-   existing protocols.
-4. Add `agents/llm/builders.py` + CLI/env opt-in (`--provider gemini`);
-   defaults unchanged.
+3. Add the remaining stage adapters (`GeminiResearchProvider`,
+   `GeminiEvidenceProvider`, `GeminiVerifier`, `GeminiScriptGenerator`,
+   `GeminiScenePlanner`) behind the existing protocols (Stage 1's
+   `GeminiTopicProvider` is done).
+4. Add `providers/gemini/builders.py`-style factories + CLI/env opt-in
+   (`--provider gemini`); defaults unchanged (Stage 1 factory lives in
+   `agents/seo/provider.py`).
 5. Add `prompts/<stage>/<name>.<ver>` templates + `config/` provider YAML
    (`provider: mock | gemini`, model, prompt refs).
 6. Add offline tests (`FakeModelProvider`, stubbed Gemini client,
