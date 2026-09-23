@@ -11,3 +11,7 @@ pytest>=7.0,<9          # test suite
 # Gemini provider (optional; required only for --provider gemini)
 google-genai>=2.23,<3   # official Gemini SDK
 pydantic>=2,<3          # structured-output schemas (pulled by google-genai too)
+
+# Firecrawl retrieval provider (optional; required only for
+# --provider gemini --retriever firecrawl)
+firecrawl>=4.22,<5      # official Firecrawl SDK (v2 Search, keyless-capable)

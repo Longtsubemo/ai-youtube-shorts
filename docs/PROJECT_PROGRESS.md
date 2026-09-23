@@ -103,12 +103,14 @@ Implemented components:
 
 CLI: `python -m agents.seo.topic_selector`.
 
-### Gemini integration — Stage 1: IN PROGRESS / FOUNDATION COMPLETE
+### Gemini integration — Stage 1: COMPLETE
 
 The **provider foundation** and **Stage-1 candidate sourcing via Gemini** are
-implemented; Stages 2–6 are NOT yet wired to Gemini (each keeps its mock-first
-default). Scope intentionally limited: Stage 1 candidates only; scoring,
-ranking, replay, and deterministic validation stay the final gate.
+implemented, tested, and committed on this branch. Stage 2 (Gemini Research) is
+now implemented on this branch too (see below). Stages 3, 4, and 6 are NOT yet
+wired to Gemini (each keeps its mock-first default). Scope intentionally
+limited: Stage 1 candidates and Stage 2 research only; scoring, ranking,
+replay, and deterministic validation stay the final gate.
 
 - New package `providers/gemini/` — `errors.py`, `config.py`,
   `structured.py`, `client.py`, `topic_provider.py` (provider-specific code;
@@ -133,8 +135,8 @@ ranking, replay, and deterministic validation stay the final gate.
 ### Test status (updated)
 
 Stage 1 now includes 42 original + 38 Gemini/provider tests =
-**80 Stage-1-related tests**; full suite: **958 passed, 1 skipped**
-(`python -m pytest tests -q`).
+**80 Stage-1-related tests**; the full suite (including the new Stage-2 Gemini
+tests below) is **1084 passed, 3 skipped** (`python -m pytest tests -q`).
 
 ## Stage 2 — Research Pipeline
 
@@ -209,16 +211,146 @@ script sentence → claim_id → source_id → original source
 
 ### Provider status
 
-Stage 2 uses `MockResearchProvider` only. **No real web/API research
-provider has been implemented yet.**
+Stage 2 has **two** research providers behind the `ResearchProvider` protocol:
+
+- `MockResearchProvider` — deterministic, network-free, the **default**.
+- `GeminiResearchProvider` — Gemini + Google Search grounding (opt-in,
+  **implemented and tested on this branch**; see `GEMINI_PROVIDER_DESIGN.md`).
+
+### Gemini integration — Stage 2: COMPLETE
+
+The Stage-2 real research provider is implemented, offline-tested, and wired
+into the research CLI on this branch (not committed yet):
+
+- `providers/gemini/research_provider.py` — `GeminiResearchProvider` +
+  `ResearchResultSchema` (sources + claims, Pydantic-validated against the
+  existing research contract: claim types, credibility tiers, date kinds).
+- `providers/gemini/client.py` — `GeminiClient.generate_research(...)` with
+  **Google Search grounding** (+ optional **URL Context** retrieval, off by
+  default) and the same retry/error discipline as `generate_structured`; returns
+  `GroundedStructured` (parsed data + grounding chunks + URL-context hits).
+- Prompt: `prompts/research/facts-v1.txt` (`PROMPT_VERSION = "research/facts-v1"`).
+- Evidence boundary: **only URLs the retrieval metadata actually returned become
+  sources.** Model-proposed URLs without grounding are dropped (never invented);
+  no grounding at all → no candidates → the package honestly lands on
+  `insufficient_evidence`. Claims live inside a source, and duplicate claim text
+  is collapsed (claim ids derive from text).
+- `agents/research/provider.py` — `build_research_provider(name, ..., env=...)`
+  factory. Default (no/empty/`mock`) → `MockResearchProvider` (key- and
+  SDK-free); `gemini` requires `GEMINI_API_KEY` (raises
+  `GeminiConfigurationError` otherwise, never a silent fallback).
+- CLI opt-in: `python -m agents.research.research_agent --provider gemini`
+  (default `mock`; optional `--enable-url-context`). A Gemini run stamps
+  envelope `produced_by` and replaces `research_notes[0]` with an honest
+  grounding note ("every source URL comes from retrieval metadata …"). Provider
+  config errors exit 2 without writing an artifact (mirrors
+  `agents/seo/topic_selector.py`).
+- Security: the API key never leaks into artifacts, exceptions, repr, or logs;
+  importing `providers.gemini.*` or building the provider never imports the SDK
+  (subprocess-verified); the mock/default path works with **no key and no
+  network** (sockets-blocked test).
+- Tests (all offline): `tests/test_gemini_research_client.py`,
+  `tests/test_gemini_research_provider.py`,
+  `tests/test_gemini_research_security.py`,
+  `tests/test_research_provider_factory.py`,
+  `tests/test_research_agent_cli.py`; grounding-aware fakes added to
+  `tests/gemini_test_utils.py`. Real-network Stage-2 integration is gated by
+  `GEMINI_INTEGRATION_TESTS=1` (`tests/test_gemini_integration.py`) and was
+  **NOT run** (no `GEMINI_API_KEY`).
+
+### Firecrawl retriever layer — Stage 2: COMPLETE
+
+Real web retrieval behind the same `GeminiResearchProvider`: an optional
+`--retriever firecrawl` opt-in routes research through the **Firecrawl Search
+API** (full-page Markdown in the same call) → Gemini structured extraction.
+Implemented, offline-tested, and wired into the research CLI on this branch
+(not committed yet):
+
+- `providers/firecrawl/` — new provider package (**SDK isolated, import-lazy**,
+  same discipline as `providers/gemini/`): `errors.py` (`FirecrawlError`
+  hierarchy), `config.py` (`FirecrawlConfig`, **keyless** — `FIRECRAWL_API_KEY`
+  optional, `from_env`, redacted repr, bounded defaults), `client.py` (lazy
+  `from firecrawl.v2 import FirecrawlClient` — keyless-capable, the v2 Search
+  API home; bounded retries, error classification incl.
+  missing-SDK → `FirecrawlConfigurationError`, tolerant `.web`/`.data` bucket
+  normalization, `FirecrawlResult`), `retriever.py`
+  (`FirecrawlResearchRetriever`, domain allow/deny, content truncation at
+  `DEFAULT_MAX_CONTENT_CHARS=6000`, maps `Firecrawl*Error` →
+  `ResearchProviderError` at the `agents/` boundary).
+- `agents/research/retriever.py` — `ResearchRetriever` protocol +
+  `RetrievedSource` (the evidence-boundary type) + deterministic
+  `MockResearchRetriever` (offline fixtures).
+- `providers/gemini/research_provider.py` — `retriever` parameter: retrieval
+  path uses `prompts/research/facts-retrieval-v1.txt`, stamps
+  `produced_by.retrieved_by`, slices results to `max_retrieved_sources` (4),
+  and renders retrieved content into the prompt; **grounding path is
+  byte-for-byte unchanged when `retriever=None`**.
+- `agents/research/provider.py` — `build_research_provider(..., retriever=...)`:
+  `mock` + `--retriever` → `ResearchProviderError`; `firecrawl` builds the
+  retriever **keyless and SDK-free** (import-isolation subprocess-verified).
+- `agents/research/research_agent.py` — `--retriever firecrawl`; validation
+  exits 2 without writing an artifact.
+- Evidence boundary preserved: **only URLs the retriever actually returned may
+  become sources**; empty retrieval → no candidates →
+  `insufficient_evidence`; key never in repr/exceptions/logs/artifacts.
+- Tests (all offline, 66 new): `tests/firecrawl_test_utils.py`,
+  `tests/test_firecrawl_config.py`, `test_firecrawl_client.py`,
+  `test_firecrawl_retriever.py`, `test_gemini_research_provider_retrieval.py`,
+  `test_research_retriever_cli.py` + extended `test_research_provider_factory.py`.
+  Real-network integration is gated by `FIRECRAWL_INTEGRATION_TESTS=1`
+  (`tests/test_firecrawl_integration.py`); the live Firecrawl verification is
+  recorded in the "Firecrawl 4.44.0 repair + real verification" block below.
+
+CLI: `python -m agents.research.research_agent --provider gemini --retriever firecrawl`
+(`FIRECRAWL_API_KEY` optional — keyless free tier; requires `GEMINI_API_KEY`).
+
+#### Firecrawl 4.44.0 repair + real verification (2026-09-23)
+
+- **Failure observed:** the first real run (`--provider gemini --retriever
+  firecrawl`, run-id `...-firecrawl`) failed with `Firecrawl retrieval failed
+  ...: Unexpected Firecrawl provider failure (ValidationError)`.
+- **Root cause (confirmed by SDK inspection + offline reproduction):** the
+  installed `firecrawl==4.44.0` raises a pydantic `ValidationError` *inside*
+  `FirecrawlClient.search` while parsing the `/v2/search` response —
+  `SearchResultWeb.url` is required, and a non-Document web hit missing a
+  top-level `url` reproduces `ValidationError: url Field required`
+  deterministically offline. The request shape was proven valid (builds and
+  sends as `ignoreInvalidURLs`/`scrapeOptions` etc.); it is a data-dependent
+  response-parsing fault, so it did **not** reproduce across 9 live calls for
+  the actual topic after the fix.
+- **Second confirmed 4.44.0 incompatibility:** the top-level
+  `from firecrawl import Firecrawl` class **requires an API key** and raises
+  `ValueError: No API key provided` in keyless mode — breaking the documented
+  keyless path. The adapter now resolves `firecrawl.v2.FirecrawlClient`
+  (keyless-capable; the supported home of the v2 Search API / `SearchData.web`).
+- **Adapter fix (`providers/firecrawl/client.py`):** v2 client resolution +
+  `_normalize_item` handles hydrated v2 `Document` hits (real responses carry
+  `url=''`/`title=''` top-level; url/title/description resolve via
+  `metadata.source_url`/`.title`, so markdown content is no longer dropped).
+- **Tests:** +6 (v2 `Document` shapes, metadata fallbacks, keyless/keyed v2
+  client resolution). Full suite now **1084 passed, 3 skipped**.
+- **Real verification (2026-09-23):** a live `FirecrawlResearchRetriever`
+  retrieval returned 5 real sources (youtube/instructables/acsh/reddit) with
+  url, title, publisher, domain, and truncated markdown
+  (`…[truncated]`; one reddit hit with empty markdown). `retrieved_at` remains
+  `""` by design (minor limitation).
+- **Gemini leg of the end-to-end CLI smoke (run-id `857acc781211-firecrawl-fixed`)
+  blocked by Google-side throttling, not a code defect:** `gemini-3-flash` →
+  HTTP 429 `generate_content_free_tier_requests` quota (limit 20);
+  `gemini-2.5-flash` → HTTP 404 (deprecated for new users; API recommends
+  `gemini-3.6-flash`); `gemini-3.6-flash` → HTTP 503 high demand. The CLI fails
+  cleanly in every case (exit 2, typed `GeminiAPIError`, no artifact written).
+  Re-run the CLI command when Google's free-tier quota/demand resets.
 
 ### Test status
 
 80 Stage 2 tests (`tests/test_research_models.py`,
 `test_research_classifier.py`, `test_research_provider.py`,
-`test_research_agent.py`).
+`test_research_agent.py`) + **54 new offline Stage-2 Gemini/provider tests**
+listed above.
 
-CLI: `python -m agents.research.research_agent`.
+CLI: `python -m agents.research.research_agent`
+(`--provider mock|gemini`, default mock).
 
 ## Documentation status
 
@@ -236,9 +368,13 @@ artifact shape (`Source`, `FactClaim`, `ResearchPackage`, `TopicCandidate`,
 
 ## Current verification
 
-Full suite: **920 tests passing** (42 Stage 1 + 80 Stage 2 + 79 Stage 3 +
-53 Stage 4 + 92 Stage 5 + 120 Stage 6 + 117 Stage 7 + 74 Stage 8 +
-140 Stage 9 + 123 Stage 10).
+Full suite: **1084 tests passing, 3 skipped** (`python -m pytest tests -q`):
+42 Stage 1 + 80 Stage 2 + 79 Stage 3 + 53 Stage 4 + 92 Stage 5 + 120 Stage 6 +
+117 Stage 7 + 74 Stage 8 + 140 Stage 9 + 123 Stage 10 = 920 deterministic
+tests, plus **158 offline Gemini/Firecrawl provider tests** (38 Stage-1
+foundation/topic + 54 Stage-2 Gemini research + 66 Firecrawl retriever layer).
+The 3 skips are the real-network integration tests (Gemini Stage 1 + Stage 2 +
+Firecrawl), gated by `GEMINI_INTEGRATION_TESTS=1` / `FIRECRAWL_INTEGRATION_TESTS=1`.
 
 ## Stage 3 — Fact Checking
 
@@ -902,9 +1038,8 @@ Do not claim any of these are implemented.
 
 Do not decide these unless the decision is already implemented:
 
-- Real research/web data provider
 - YouTube data source
-- Production LLM provider
+- Production LLM provider (beyond the Stage-1/2 Gemini provider)
 - Real analytics provider
 - Colab transport implementation
 - Topic scoring weight tuning
@@ -916,155 +1051,170 @@ Do not decide these unless the decision is already implemented:
 - YouTube publishing implementation
 - Analytics storage implementation
 
-## Current checkpoint
-
-```
-STAGE 1 COMPLETE (Topic Selection)
-    ↓
-STAGE 2 COMPLETE (Research Pipeline)
-    ↓
-STAGE 3 COMPLETE (Fact Checking)
-    ↓
-STAGE 4 COMPLETE (Script Generation)
-    ↓
-STAGE 5 COMPLETE (Script QA)
-    ↓
-STAGE 6 COMPLETE (Scene Planning)
-    ↓
-STAGE 7 COMPLETE (Video Generation)
-    ↓
-STAGE 8 COMPLETE (Video QA)
-    ↓
-STAGE 9 COMPLETE (Policy / Publishing QA)
-    ↓
-STAGE 10 COMPLETE (Human Approval)
-    ↓
-STAGE 11 YOUTUBE PUBLISHING IS NEXT (not implemented)
-```
-
-Current verification: 958 tests passing (`python -m pytest tests -q` ->
-`958 passed, 1 skipped`).
-
-**Final end-to-end verification (completed):** Stages 1–10 are implemented and
-the whole pipeline closes with a REAL Stage-10 CLI approval run
-(`python -m agents.human_approval --decision APPROVED --approver-id test-user
---approver-role owner --notes "Final manual-upload approval"`):
-
-- exit code **0**;
-- decision **APPROVED**;
-- all 5 blocking gates OK (`required_artifacts`, `policy_qa_hard_reject`,
-  `video_qa_hard_reject`, `video_generation_completed`, `review_overrides`);
-- **7 reviewed artifacts** bound by id + canonical `content_sha256`
-  (policy_qa / video_qa / video_result / production_plan / script / script_qa
-  / fact_check);
-- `manual_upload.ready=True`;
-- `data/<run_id>/approval/human_approval_result.json` written and run state
-  advanced to the existing generic `Stage.PUBLISH` in `state.json`;
-- no upload/network/analytics/scheduling action occurred.
-
-Stage 11 (YouTube Publishing) is **NOT IMPLEMENTED** and remains intentionally
-out of scope. Project goal achieved: the pipeline now produces a
-**manual-upload-ready video package** — the user performs the YouTube upload
-manually; no automatic publishing is implemented.
-
-The next implementation task is **"Implement Stage 11 — YouTube Publishing"** —
-do not implement it now. Stage 10's `manual_upload.ready` marks the produced
-package as ready for a MANUAL YouTube upload by the user; automatic YouTube
-publishing may follow in a later stage.
-
-## How to continue
-
-1. Read `docs/PROJECT_PROGRESS.md` (this file) first.
-2. Read `docs/ARCHITECTURE.md`.
-3. Read `docs/DATA_CONTRACTS.md`.
-4. Read `docs/FACT_VERIFICATION.md`.
-5. Confirm the current test suite passes
-   (`python -m pytest tests -q` — expect 958 passing, 1 skipped).
-6. Continue with Stage 11 only.
-7. Do not redo completed stages unless a concrete bug is discovered.
-8. Do not rely on previous OpenCode conversation history.
-
 ## Continuity checkpoint — end of session
 
 Single snapshot so a **fresh OpenCode session** — with **no reliance on any
 previous OpenCode conversation history** — knows exactly where the project
 stopped without guessing.
 
-### Repository state (Gemini foundation work)
+### Repository state
 
-- The Stage-1 **Gemini foundation** (`providers/gemini/`, `agents/seo/provider.py`,
-  `prompts/seo/topic_candidates-v1.txt`, offline tests, `.env.example`,
-  `requirements.txt` additions, CLI `--provider mock|gemini` opt-in) is
-  **implemented and uncommitted** in the working tree; the added Stage-1 tests
-  are green (suite: **958 passed, 1 skipped**). This work was NOT committed.
-  Hooks/by-line may differ from the HEAD commit below. Do not commit unless
-  explicitly asked to.
-- HEAD (= the last committed state before this foundation) —
-  `0b054d44ecf565e0d7068919b8746ea00179b7bb` — `feat: implement stage 10 human approval`.
-- The Stage-1 Gemini slice is **Stage 1 only**: no Stage 2–6 / 7–11 code changes,
-  no generative stages, no Stage-11 publishing work.
-- The uncommitted Gemini work is NOT part of a clean commit; `git status`
-  shows modified/new files listed prior. Do not amend or reword commits.
+- **Branch:** `feat/real-gemini-pipeline`
+- **HEAD commit:** `439a2bb` — `feat: add Gemini provider and Stage 1 integration`
+- Stage 1 Gemini (provider foundation + topic candidates) is committed at HEAD.
+- The current working tree adds **Stage 2 — Gemini Research Provider**
+  (implemented and fully offline-tested below) plus this documentation
+  checkpoint. All of it is deliberately left **uncommitted** for the next
+  session to verify and commit when asked. Do not commit anything unless
+  explicitly asked.
+- Prior committed baseline (pre-Gemini): `0b054d44` — `feat: implement stage 10
+  human approval`, still reachable in history.
 
-### Completed — Stages 1–10
+### Stage status
 
-Stage 1 Topic Selection, Stage 2 Research, Stage 3 Fact Checking, Stage 4
-Script Generation, Stage 5 Script QA, Stage 6 Scene Planning, Stage 7 Video
-Generation, Stage 8 Video QA, Stage 9 Policy / Publishing QA, and
-**Stage 10 Human Approval** are all **COMPLETE**.
-
-- **Stage 10 = Human Approval**, implemented in **`agents/human_approval/`**
-  (`models.py`, `validator.py`, `stage.py`, `__main__.py`, `__init__.py`).
-- Stage 10 records an explicit human decision over the exact reviewed
-  artifact versions (7 roles, stable ids + canonical `content_sha256`),
-  with decisions `APPROVED / CHANGES_REQUESTED / REJECTED / PENDING` (PENDING
-  never writable), hard cleaning gates that block APPROVED fail-closed, soft
-  REVIEW-only overrides bound to the reviewed artifact, digest-based staleness
-  detection, supersede chaining, and a `manual_upload` readiness flag. It
-  advances state to the existing generic `Stage.PUBLISH` and performs NO
-  upload.
-- **Full test suite passes: 920 tests** (`python -m pytest tests -q`),
-  including 123 Stage 10 tests (models / validator / stage / safety).
-- **Final end-to-end CLI approval verified on the real default path:** exit 0,
-  decision `APPROVED`, all 5 blocking gates OK, 7 reviewed artifacts bound by
-  id + `content_sha256`, `manual_upload.ready=True`,
-  `data/ha-demo/approval/human_approval_result.json` + `state.json`
-  (`current_stage: publish`) written, and no upload/network/analytics/
-  scheduling action. **Project goal achieved:** the pipeline produces a
-  manually upload-ready package; the user performs the YouTube upload
-  manually, and no automatic publishing is implemented.
-- Stage 10 was verified across the APPROVED / CHANGES_REQUESTED / REJECTED,
-  hard-gate-blocked-APPROVED, stale-digest-invalidation, override-bound, and
-  supersede paths (CLI exits 0 / 1 / 1 / 2 / 1 / 0 / 0), plus the offline
-  safety audit (sockets blocked, no writes, no Stage-11 vocabulary).
-- **Stage 10 does NOT implement publishing** — it marks a produced package as
-  ready for a MANUAL YouTube upload.
-
-### Not implemented (out of scope)
-
-- **Stage 11 — YouTube Publishing is NOT IMPLEMENTED** and is intentionally
+- **Stages 1–10 (deterministic / mock pipeline): COMPLETE**, unchanged, and
+  still the default execution path. All existing 920 deterministic tests stay
+  green.
+- **Stage 1 real Gemini foundation + integration: COMPLETE** on this branch
+  (provider layer, `TopicCandidateProvider` integration, opt-in CLI, offline
+  tests, provenance, API-key security).
+- **Stage 2 real Gemini Research: COMPLETE (implemented, tested, NOT committed;
+  real key-gated run NOT performed).** Details below.
+- **Stage 3, 4, 6 real Gemini providers: NOT IMPLEMENTED** (design only —
+  `GeminiEvidenceProvider`, `GeminiVerifier`, `GeminiScriptGenerator`,
+  `GeminiScenePlanner` do not exist).
+- **Stage 11 (YouTube publishing) and later: NOT IMPLEMENTED**, intentionally
   out of scope.
-- **Current project goal — ACHIEVED:** produce a video package that is ready
-  for MANUAL YouTube upload by the user **and** carries a verifiable human
-  approval record (`manual_upload.ready`). **Automatic YouTube uploading is
-  not part of the current goal and is not implemented.**
 
-### Future work (separate, where applicable)
+### Stage-1 Gemini implementation (committed)
 
-Real production infrastructure remains future work: live research/evidence
-providers, Colab/GPU generation workers, TTS, subtitle rendering, video
-assembly, actual media rendering, and Stage-11 YouTube publishing.
+- `providers/gemini/` — `errors.py`, `config.py`, `structured.py`, `client.py`,
+  `topic_provider.py` (+ package `__init__.py`); SDK is import-lazy and
+  **never imported by any `agents/` stage**.
+- `agents/seo/provider.py` — `TopicCandidateProvider` protocol,
+  `MockTopicCandidateProvider` (mock path preserved), and
+  `build_topic_candidate_provider()` factory.
+- `agents/seo/topic_selector.py` — `--provider mock|gemini` opt-in
+  (default `mock`); a Gemini failure exits with code 2 and writes no artifact.
+- `prompts/seo/topic_candidates-v1.txt` — versioned Stage-1 prompt.
+- `requirements.txt` — `google-genai>=2.23,<3`, `pydantic>=2,<3`;
+  `.env.example` documents `GEMINI_API_KEY` / `GEMINI_MODEL`.
+- Provenance — Gemini runs stamp envelope `produced_by` and per-candidate
+  `provenance` with `provider="gemini"`, `model`, and `prompt_version`.
+- API-key security — `GEMINI_API_KEY` is required only for the opt-in path; the
+  key never appears in `repr`, exceptions, logs, or artifacts
+  (`tests/test_gemini_security.py`).
 
-### Continuity instruction for the next session
+### Stage-2 Gemini implementation (implemented, NOT committed)
+
+- `providers/gemini/research_provider.py` — `GeminiResearchProvider`,
+  `ResearchResultSchema`/`ResearchResultAdapter` (Pydantic gate over the
+  research contract: claim types, credibility tiers, date kinds),
+  `_normalize_url`/`_is_iso`/`_netloc` helpers, `claim_text_digest`,
+  `PROMPT_VERSION = "research/facts-v1"`.
+- `providers/gemini/client.py` — `generate_research(...)` (Google Search
+  grounding + optional URL Context), `GroundedStructured`/`GroundingChunkInfo`
+  dataclasses, `_extract_grounding`/`_extract_url_context`; `_base_params`
+  refactor (behavior preserved). Same retry/timeout/error discipline as Stage 1.
+- `providers/gemini/__init__.py` — exports `GeminiResearchProvider`,
+  `GroundedStructured`, `GroundingChunkInfo`.
+- `agents/research/provider.py` — `build_research_provider(name, *,
+  data_path=..., env=None, enable_url_context=False)` factory: `mock` default
+  (no key/SDK), `gemini` requires `GEMINI_API_KEY`, unknown name →
+  `ResearchProviderError`.
+- `agents/research/research_agent.py` — `--provider mock|gemini` (default
+  `mock`) + `--enable-url-context`; gemini path stamps `produced_by` and
+  replaces `research_notes[0]` with an honest grounding note; provider errors
+  exit 2 without writing an artifact.
+- `prompts/research/facts-v1.txt` — versioned Stage-2 research prompt.
+- Evidence boundary: only retrieval-metadata URLs become sources; ungrounded
+  model sources are dropped; no grounding → empty candidates →
+  `insufficient_evidence`; claims deduped by lowercased text.
+- `tests/gemini_test_utils.py` — grounding-aware fakes (FakeGroundedResponse,
+  FakeCandidate, FakeGroundingMetadata/Chunks, FakeUrlContextMetadata,
+  `grounded_result`, `valid_research_payload`).
+- New offline tests (54): `tests/test_gemini_research_client.py`,
+  `tests/test_gemini_research_provider.py`,
+  `tests/test_gemini_research_security.py`,
+  `tests/test_research_provider_factory.py`,
+  `tests/test_research_agent_cli.py`. Gated Stage-2 real-network test added to
+  `tests/test_gemini_integration.py` (`REQUIRES_KEY`).
+
+### Verification
+
+- Full suite at that point: **1012 passed, 2 skipped**; the suite as of the
+  Firecrawl retriever layer is **1084 passed, 3 skipped**
+  (`python -m pytest tests -q`).
+- **54 new offline Stage-2 Gemini/provider tests** (client language: grounding,
+  tool wiring, errors/retries; provider: evidence boundary, schema strictness,
+  dedup, provenance; security: no key/sdk leakage, mock works without key,
+  sockets-blocked run; factory wiring; CLI opt-in). No network, no real key
+  needed.
+- Real-network integration is gated behind `GEMINI_INTEGRATION_TESTS=1`
+  (`tests/test_gemini_integration.py`, Stage 1 + Stage 2 tests) and was **NOT
+  run** — `GEMINI_API_KEY` was not configured.
+- Verified behavior: default mock CLI unchanged and produces a valid
+  `ResearchPackage` (`ready_for_fact_check`); `--provider gemini` without a key
+  fails cleanly (exit 2, message names `GEMINI_API_KEY`) and writes no
+  artifact; `--help` documents the new flags.
+
+### Stage 2 research decisions (implemented)
+
+- `GeminiResearchProvider` implements the existing `ResearchProvider` protocol
+  (`agents/research/provider.py`).
+- **Gemini + Google Search grounding is the selected first retrieval
+  mechanism.**
+- URL Context is implemented for deeper retrieval but **off by default**
+  (`--enable-url-context`; free-tier behaviour unverified).
+- Actual retrieved source metadata / URLs are the evidence boundary.
+- Gemini's generated knowledge is **NOT** treated as verified evidence.
+- Research claims remain **provisional** until Stage 3 Fact Checking.
+- **No invented / fabricated URLs or sources.**
+- Stage 3 remains the factual verification gate.
+- `MockResearchProvider` remains the default / offline path; real Gemini is
+  explicit opt-in.
+- The existing `ResearchPackage`/data contract and deterministic validation
+  (`docs/DATA_CONTRACTS.md`) are preserved unchanged.
+
+### Next task
+
+**Verify and (when asked) commit Stage-2 research (Gemini provider + Firecrawl
+retriever layer)**, then continue with single-step real-provider progression
+(next natural candidate: Stage 3 — `GeminiEvidenceProvider` behind the
+`EvidenceProvider` protocol).
+
+Practically, the next session should:
+
+1. Confirm `python -m pytest tests -q` still reports **1084 passed, 3 skipped**.
+2. Inspect `git status`/`git diff` to review the new Firecrawl layer
+   (files listed above).
+3. If a real `GEMINI_API_KEY` is available and the user opts in, optionally run
+   `GEMINI_INTEGRATION_TESTS=1 python -m pytest tests/test_gemini_integration.py -q`
+   and/or `python -m agents.research.research_agent --provider gemini`; otherwise
+   state clearly that the real Gemini Stage-2 run was NOT performed.
+4. To exercise real web retrieval, install the SDK
+   (`pip install "firecrawl>=4.22,<5"`), optionally set `FIRECRAWL_API_KEY`
+   (keyless works, rate-limited), and run
+   `FIRECRAWL_INTEGRATION_TESTS=1 python -m pytest tests/test_firecrawl_integration.py -q`
+   and/or `python -m agents.research.research_agent --provider gemini --retriever firecrawl`.
+   Otherwise state clearly that the real Firecrawl run was NOT performed.
+5. Commit only when explicitly asked.
+
+Explicitly do NOT, unless asked:
+
+- implement Stage 3 yet;
+- implement Gemini providers for Stages 3, 4, or 6 yet;
+- change the deterministic / mock pipeline or any existing data contract;
+- implement video generation / assembly / upload / automation work.
+
+### How to continue
 
 1. Read `docs/PROJECT_PROGRESS.md` (this file) first.
-2. Read `docs/ARCHITECTURE.md`.
-3. Read `docs/DATA_CONTRACTS.md`.
-4. Read `docs/FACT_VERIFICATION.md`.
-5. Confirm the current test suite passes
-   (`python -m pytest tests -q` — expect 958 passing, 1 skipped).
-6. Do NOT implement Stage 11 (YouTube publishing) or any later stage unless
-   explicitly asked; the goal is a manual-upload-ready video package with a
-   verifiable human approval record, not publishing.
-7. Do not redo completed stages unless a concrete bug is discovered.
-8. Do not rely on previous OpenCode conversation history.
+2. Read `docs/GEMINI_PROVIDER_DESIGN.md` (provider architecture + Stage 2 plan).
+3. Read `docs/ARCHITECTURE.md`, `docs/DATA_CONTRACTS.md`,
+   `docs/FACT_VERIFICATION.md`, `docs/RESEARCH_PIPELINE.md`.
+4. Confirm the test suite passes
+   (`python -m pytest tests -q` — expect **1084 passed, 3 skipped**).
+5. Continue with the single next task above. Stages 3–11 stay out of scope.
+6. Do not redo completed stages unless a concrete bug is discovered.
+7. Do not rely on previous OpenCode conversation history.

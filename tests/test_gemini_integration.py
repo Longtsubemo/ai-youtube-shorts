@@ -43,3 +43,36 @@ def test_real_stage1_run_with_gemini_provider():
     # Secrets never leak into the artifact even on a real run.
     api_key = os.environ.get("GEMINI_API_KEY", "")
     assert api_key not in selection.to_json()
+
+
+@REQUIRES_KEY
+def test_real_stage2_research_with_gemini_provider():
+    from agents.research.provider import build_research_provider
+    from agents.research.stage import load_topic_selection, run_research
+
+    selection = load_topic_selection("data/mock/topic_selection.json")
+    provider = build_research_provider("gemini")
+    package = run_research(selection, provider, run_id="gem_int_research")
+    package.produced_by = dict(provider.produced_by)
+    package.validate()
+
+    artifact = package.to_dict()
+    assert artifact["produced_by"]["provider"] == "gemini"
+    assert artifact["produced_by"]["model"] == provider.model
+    assert artifact["produced_by"]["prompt_version"] == provider.prompt_version
+    assert artifact["data"]["research_status"] in ("provisional", "insufficient_evidence", "ready_for_fact_check")
+    assert len(artifact["data"]["research_notes"]) >= 1
+    assert any("grounded" in note or "provisional" in note for note in artifact["data"]["research_notes"])
+
+    # Every source URL must be a real http(s) URL returned by grounding
+    # (never a fabricated URL) and no two claims share a claim id.
+    claim_ids = set()
+    for source in artifact["data"]["sources"]:
+        assert source["url"].startswith(("http://", "https://"))
+    for claim in artifact["data"]["claims"]:
+        assert claim["claim_id"] not in claim_ids
+        claim_ids.add(claim["claim_id"])
+        assert claim["source_ids"], "every real claim must be grounded to a source"
+
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    assert api_key not in package.to_json()

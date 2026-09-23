@@ -14,9 +14,10 @@ realistic but clearly-marked fake sources (example.test URLs).
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Protocol
+from typing import Iterable, Mapping, Protocol
 
 from agents.research.models import ClaimDate
 
@@ -188,3 +189,54 @@ class MockResearchProvider:
 
     def knowable_topics(self) -> list[str]:
         return [entry["topic_id"] for entry in self.topics]
+
+
+def build_research_provider(
+    name: str | None,
+    *,
+    data_path: str | Path = DEFAULT_RESEARCH_DATA_PATH,
+    env: Mapping[str, str] | None = None,
+    enable_url_context: bool = False,
+    retriever: str | None = None,
+) -> ResearchProvider:
+    """Return the research provider selected by `name` (default: mock).
+
+    Only the requested provider is imported, so a mock/default run never
+    needs or imports the Gemini/Firecrawl SDKs. Providing a real provider
+    requires the GEMINI_API_KEY environment variable; a missing key raises
+    GeminiConfigurationError rather than silently failing over to mock.
+
+    `retriever` selects real web retrieval for the gemini provider:
+    `"firecrawl"` builds a FirecrawlResearchRetriever (keyless-capable). No
+    other provider accepts a retriever.
+    """
+    if name in (None, "", "mock"):
+        if retriever is not None:
+            raise ResearchProviderError("--retriever is only supported with the gemini provider")
+        return MockResearchProvider(data_path=data_path)
+
+    if name == "gemini":
+        from providers.gemini.client import GeminiClient
+        from providers.gemini.config import GeminiConfig
+        from providers.gemini.research_provider import GeminiResearchProvider
+
+        gemini_config = GeminiConfig.from_env(env if env is not None else os.environ)
+        client = GeminiClient(gemini_config)
+
+        built_retriever = None
+        if retriever == "firecrawl":
+            from providers.firecrawl.config import FirecrawlConfig
+            from providers.firecrawl.retriever import FirecrawlResearchRetriever
+
+            firecrawl_config = FirecrawlConfig.from_env(env if env is not None else os.environ)
+            built_retriever = FirecrawlResearchRetriever(config=firecrawl_config)
+        elif retriever is not None:
+            raise ResearchProviderError(f"unknown retriever: {retriever!r}")
+
+        return GeminiResearchProvider(
+            client=client,
+            enable_url_context=enable_url_context,
+            retriever=built_retriever,
+        )
+
+    raise ResearchProviderError(f"unknown research provider: {name!r}")

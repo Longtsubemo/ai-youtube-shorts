@@ -28,7 +28,9 @@ from agents.research.provider import (
     ResearchProviderError,
     SourceCandidate,
     TopicDescriptor,
+    build_research_provider,
 )
+from agents.research.retriever import MockResearchRetriever, RetrievedSource, ResearchRetriever
 
 __all__ = [
     "ResearchAgent",
@@ -45,4 +47,8 @@ __all__ = [
     "ResearchProviderError",
     "SourceCandidate",
     "TopicDescriptor",
+    "build_research_provider",
+    "MockResearchRetriever",
+    "RetrievedSource",
+    "ResearchRetriever",
 ]

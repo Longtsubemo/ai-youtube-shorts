@@ -63,7 +63,7 @@ video/             Future video build steps (generation, editing, subtitles, aud
 data/              Working artifacts per run + committed mock fixtures under data/mock/
 prompts/           Prompt templates per agent
 config/            Configuration (populated later; secrets go in .env)
-tests/             Test suite for the implemented stages (920 passing)
+tests/             Test suite for the implemented stages (1084 passing, 3 gated skips)
 ```
 
 ## Current development stage
@@ -138,12 +138,34 @@ python -m agents.qa.video                    # Stage 8: video QA (PASS/REVIEW/RE
 python -m agents.qa.policy                   # Stage 9: policy/publishing QA (PASS/REVIEW/REJECT)
 python -m agents.human_approval              # Stage 10: human approval (APPROVED/CHANGES_REQUESTED/REJECTED)
 
-# run the whole test suite (920 tests passing)
+# run the whole test suite (1084 passing, 3 gated skips)
 python -m pytest tests -q
 ```
 
 Each CLI writes its artifact under `data/<run_id>/` and records run state
 in `state.json`.
+
+### Optional real Gemini providers (Stages 1 & 2)
+
+The deterministic mock providers are the default. You can opt into real Gemini
+behind the same stage protocols instead (`GEMINI_API_KEY` required, set it in
+`.env` or the environment; see `docs/GEMINI_PROVIDER_DESIGN.md`):
+
+```powershell
+python -m agents.seo.topic_selector --provider gemini      # Stage 1 candidates
+python -m agents.research.research_agent --provider gemini # Stage 2 research (grounded)
+# optional deeper retrieval for the research stage:
+python -m agents.research.research_agent --provider gemini --enable-url-context
+# real web retrieval instead of Google Search grounding (keyless Firecrawl free tier):
+python -m agents.research.research_agent --provider gemini --retriever firecrawl
+```
+
+A Gemini run stamps `produced_by`/`provenance` with the provider, model, and
+prompt version. Only URLs the retrieval layer (Google Search grounding or the
+Firecrawl retriever) actually returned become research sources — nothing is ever
+invented. Without a key the gemini path fails cleanly (exit 2) and writes no
+artifact. The Firecrawl retriever needs `pip install "firecrawl>=4.22,<5"`;
+`FIRECRAWL_API_KEY` is optional (rate-limited keyless free tier).
 
 ## Design documentation
 
