@@ -2,16 +2,18 @@
 
 **Status:**
 
-- **Gemini Provider Architecture: IMPLEMENTED for Stages 1 & 2**
+- **Gemini Provider Architecture: IMPLEMENTED for Stages 1, 2 & 4**
 - **Stage 1 Gemini (topic selection): IMPLEMENTED**
 - **Stage 2 Gemini Research: IMPLEMENTED** (offline-tested; a real key-gated
   run is the only unperformed verification)
 - **Stage 2 web retrieval (Firecrawl retriever layer): IMPLEMENTED**
-  (offline-tested; a real Firecrawl network run is the only unperformed
-  verification — the `firecrawl` SDK is not installed in this environment)
-- **Stages 3, 4, 6 Gemini providers (`GeminiEvidenceProvider`,
-  `GeminiVerifier`, `GeminiScriptGenerator`, `GeminiScenePlanner`):
-  NOT IMPLEMENTED** (design only)
+  (a real Firecrawl network run produced `data/857acc781211-firecrawl-lite/`
+  locally; the `firecrawl` SDK stays out of `providers/gemini/` tests)
+- **Stage 4 Gemini Script (`GeminiScriptProvider`): IMPLEMENTED**
+  (offline-tested + a real key-gated smoke produced the Stage-4 `Script`
+  artifact; deterministic `validate_script_from_package` is the final gate)
+- **Stages 3 & 6 Gemini providers (`GeminiEvidenceProvider`, `GeminiVerifier`,
+  `GeminiScenePlanner`): NOT IMPLEMENTED** (design only)
 
 This document records the inspection/design pass over the existing Stages 1–6
 implementation and the plan for introducing a real Gemini provider
@@ -19,7 +21,7 @@ without breaking the deterministic mock providers, data contracts, provenance,
 tests, or the Stage 1–6 boundaries and determinism.
 
 Stages 1–10 are complete and deterministic (branch `feat/real-gemini-pipeline`,
-HEAD `439a2bb`), **1084 tests pass (3 skipped)**. Stage 11 (YouTube upload)
+HEAD `b57f2ee`), **1133 tests pass (4 skipped)**. Stage 11 (YouTube upload)
 remains out of scope.
 
 The Stage-1 slice of this plan is implemented (see **[H] Implemented —
@@ -27,10 +29,12 @@ Stage 1 slice** below): a reusable `providers/gemini/` layer plus the
 `agents/seo/provider.py` seam, used by Stage 1 (topic selection) via an explicit
 `--provider gemini` CLI opt-in. **Stage 2 (research) is now implemented too**
 (same layer + `agents/research/provider.py` seam; see **[I] Implemented —
-Stage 2 slice** plus **[I₂] Stage 2 — Firecrawl web retrieval layer**),
-leaving Stages 3, 4, and 6 with mock-first defaults; their
-adapter classes (section B) are NOT yet implemented. The default mock paths are
-byte-for-byte unchanged.
+Stage 2 slice** plus **[I₂] Stage 2 — Firecrawl web retrieval layer**), and
+**Stage 4 (script) is implemented** (`agents/script/provider.py` seam +
+`GeminiScriptProvider`; see **[K] Implemented — Stage 4 script slice**),
+leaving Stages 3 and 6 with mock-first defaults; their adapter classes
+(section B) are NOT yet implemented. The default mock paths are byte-for-byte
+unchanged.
 
 ---
 
@@ -133,12 +137,12 @@ validator/gates before the artifact can be persisted.
 | `GeminiResearchProvider` | `ResearchProvider` | `TopicDescriptor` (one topic, one evidence request); grounding metadata is the evidence boundary | `agents/research/` package-building rules (provisional-only claims, dedup, source validation) | **IMPLEMENTED (Stage 2)** |
 | `GeminiEvidenceProvider` | `EvidenceProvider` | `Source`; evidence constrained to the source's own content | `MeaningfulEvidence` / `SUPPORTING_EVIDENCE_TYPES` bounds | NOT IMPLEMENTED |
 | `GeminiVerifier` | `Verifier` | **strictly `{claim, supplied evidence, source metadata}`** — never outside/world knowledge (`agents/qa/fact_checker/verifier.py` docstring); returns `ClaimAssessment` | verdict vocabulary `DIRECT/PARTIAL/INSUFFICIENT/NONE/CONTRADICTORY` | NOT IMPLEMENTED |
-| `GeminiScriptGenerator` | `ScriptGenerator` | **only approved claims** (Stage 3 `approved_claims`); no raw research | `validate_script` (token coverage / no-hallucination / certainty preservation, deterministic) | NOT IMPLEMENTED |
+| `GeminiScriptProvider` | `ScriptProvider` (`agents/script/provider.py`) | `ResearchPackage` — prompt renders ONLY the package's claims (ids + texts + evidence tiers); a line may only cite package claim ids | `validate_script_from_package` (token coverage / no-hallucination / certainty preservation / hedge preservation, deterministic) — final gate, fails closed as `blocked` | **IMPLEMENTED (Stage 4)** |
 | `GeminiScenePlanner` | `ScenePlanner` | `Script` (post Script-QA PASS); returns `ScenePlanningResult` | `validate_production_plan` rules r01–r20 | NOT IMPLEMENTED |
 
-`GeminiTopicProvider` and `GeminiResearchProvider` exist.
-`GeminiEvidenceProvider`, `GeminiVerifier`, `GeminiScriptGenerator`, and
-`GeminiScenePlanner` are **FUTURE / NOT IMPLEMENTED** — do not claim they exist.
+`GeminiTopicProvider`, `GeminiResearchProvider`, and `GeminiScriptProvider`
+exist. `GeminiEvidenceProvider`, `GeminiVerifier`, and `GeminiScenePlanner`
+are **FUTURE / NOT IMPLEMENTED** — do not claim they exist.
 
 Constaints honored everywhere:
 
@@ -225,8 +229,9 @@ Stage-2 slice: `providers/gemini/research_provider.py` + `generate_research` in
 param/`--retriever firecrawl` wiring +
 `prompts/research/facts-retrieval-v1.txt` + offline tests. Default paths stay
 `None → Mock*`; the mock runner, contracts, provenance schemes, and ID rules are
-unchanged; the full suite (1084 passed, 3 skipped) is green. Stages 3, 4, and 6
-keep mock-first defaults.
+unchanged; the full suite (1133 passed, 4 skipped) is green. Stage 4's
+`GeminiScriptProvider` is implemented (section K); Stages 3 and 6 keep
+mock-first defaults.
 
 ---
 
@@ -540,3 +545,47 @@ metadata.
    retrieval mechanism for research; sources remain the authority — the model
    proposes, never the fact authority. Stage-3 eligibility for grounding stays
    open until Stage 3 is implemented.
+
+## K. Implemented — Stage 4 script slice (GeminiScriptProvider)
+
+Implements the package-based script path (repo stage SCRIPT_GENERATION,
+`agents/script/`): a `ResearchPackage` is turned directly into a validated
+30-60 second Short `Script`, without waiting on a fact-check result.
+
+- New seam `agents/script/provider.py`: `ScriptProvider` protocol +
+  `MockScriptProvider` (deterministic, network-free, reuses the existing
+  `MockScriptGenerator._plan`) + `build_script_provider(name, *, env, config)`
+  (default `mock`; `gemini` builds lazily from the env; unknown names raise
+  `ScriptProviderError`). No fact-check result exists on this path, so the WHOLE
+  package claim set is the working set; `result_id=""` and the script is bound
+  to the package by `package_id`.
+- New adapter `providers/gemini/script_provider.py`:
+  `GeminiScriptProvider(client, *, prompt_path, malformed_retries=1)`.
+  Prompt `prompts/script/script-v1.txt` renders ONLY the package claims (id,
+  type, verification status, evidence tiers); structured output schema
+  `ScriptResultSchema` (title + lines, `purpose` is a `Literal` of the 7
+  purposes). A bounded retry (default 1, malformed-only) survives transient
+  truncated/non-JSON responses; schema errors are NOT retried.
+- Deterministic mapping builds the existing `Script` contract: durations from
+  word counts, exact `used`/`unused` tracking over the package claim set,
+  provenance `(generated_by, provider, model, prompt_version)`.
+- Deterministic final gate `validate_script_from_package`
+  (`agents/script/validator.py`) mirrors `validate_script` against the package:
+  unknown refs, wording outside token coverage, dropped hedges, and
+  strengthened certainty all fail closed as a `STATUS_BLOCKED` generation —
+  never a persisted artifact.
+- CLI: `python -m agents.script --provider <mock|gemini> --research
+  <research_package.json>` (default mock). `--provider gemini` without
+  `--research` exits 2. On `generated`, writes `<out>/<run_id>/scripts/script.json`
+  and advances `state.json` to `script_generation`; exit codes: insufficient 0,
+  blocked 1, provider/config error 2 (same vocabulary as the research CLI).
+- Offline tests: `tests/test_script_provider_factory.py`,
+  `tests/test_mock_script_provider.py`, `tests/test_gemini_script_provider.py`,
+  `tests/test_gemini_script_security.py`, `tests/test_script_cli.py`; a
+  key-gated real case lives in `tests/test_gemini_integration.py`.
+- Real smoke (key-gated, `GEMINI_MODEL=gemini-3.5-flash-lite`) produced
+  `data/857acc781211-firecrawl-lite/scripts/script.json`: all 3/3 package
+  claims used, 36.4s, provenance `gemini / gemini-3.5-flash-lite /
+  script/script-v1`, `result_id=""`, `package_id` bound, no API key in the
+  artifact. The `.env` default model (`gemini-3-flash`) was free-tier
+  quota-exhausted, hence the explicit model override for the smoke.

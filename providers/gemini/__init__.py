@@ -18,6 +18,7 @@ from providers.gemini.errors import (
     GeminiUnexpectedError,
 )
 from providers.gemini.research_provider import GeminiResearchProvider
+from providers.gemini.script_provider import GeminiScriptProvider, ScriptResultAdapter
 
 __all__ = [
     "GeminiClient",
@@ -31,6 +32,8 @@ __all__ = [
     "GeminiTimeoutError",
     "GeminiUnexpectedError",
     "GeminiResearchProvider",
+    "GeminiScriptProvider",
+    "ScriptResultAdapter",
     "GroundedStructured",
     "GroundingChunkInfo",
 ]

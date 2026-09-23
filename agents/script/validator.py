@@ -29,7 +29,7 @@ from typing import Any, Sequence
 
 from agents.qa.fact_checker.evidence import meaningful_tokens
 from agents.qa.fact_checker.models import FactCheckResult
-from agents.research.models import FactClaim
+from agents.research.models import FactClaim, ResearchPackage
 from agents.script.models import (
     FACTUAL_PURPOSES,
     DURATION_TOLERANCE_SECONDS,
@@ -232,6 +232,114 @@ def validate_script(
 
     # Duration: declared total must match the derived sum; bounds are warnings
     # (a reviewer can still decide an out-of-range script is acceptable).
+    derived = round(sum(line.estimated_duration_seconds for line in script.lines), 2)
+    if abs(derived - script.estimated_duration_seconds) > DURATION_TOLERANCE_SECONDS:
+        errors.append(
+            "estimated_duration_seconds does not match the derived sum of line durations"
+        )
+    if script.estimated_duration_seconds < config.min_duration_seconds:
+        warnings.append(
+            f"duration {script.estimated_duration_seconds:.1f}s is below the "
+            f"{config.min_duration_seconds:.0f}s target"
+        )
+    if script.estimated_duration_seconds > config.max_duration_seconds:
+        warnings.append(
+            f"duration {script.estimated_duration_seconds:.1f}s exceeds the "
+            f"{config.max_duration_seconds:.0f}s Shorts target"
+        )
+
+    return ScriptValidation(errors=tuple(errors), warnings=tuple(warnings))
+
+
+def validate_script_from_package(
+    script: Script,
+    package: ResearchPackage,
+    config: Any,
+) -> ScriptValidation:
+    """Validate a generated script directly against its ResearchPackage.
+
+    The package-based path (no fact-check result yet): every package claim is
+    the working set, so a line may only cite claims present in the package.
+    All other guarantees are identical to `validate_script` — factual lines
+    must carry refs, claim usage must be tracked exactly and completely,
+    factual wording must stay inside the referenced claims' token coverage,
+    and hedges must survive (never strengthened into certainty). This is the
+    deterministic final gate for script generation over a package.
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    claims_by_id = {claim.claim_id: claim for claim in package.claims}
+    package_claims = {claim.claim_id for claim in package.claims}
+
+    # Provenance / binding to the exact research package.
+    if script.provenance is None:
+        errors.append("script has no provenance")
+    if script.package_id != package.package_id:
+        errors.append(
+            f"script.package_id {script.package_id!r} does not match "
+            f"research package {package.package_id!r}"
+        )
+
+    # Structural requirements (identical to validate_script).
+    if not script.lines:
+        errors.append("script has no lines")
+    if not script.title.strip():
+        errors.append("script title is empty")
+    if not script.hook.strip():
+        errors.append("script hook is empty")
+    if not any(line.purpose == "hook" for line in script.lines):
+        errors.append("script has no hook line")
+    if not any(line.purpose in ("fact", "explanation") for line in script.lines):
+        errors.append("script has no fact/explanation line")
+
+    # Claim references: factual lines must be grounded in package claims.
+    for line in script.lines:
+        if line.purpose not in PURPOSE_VALUES:
+            errors.append(f"line {line.line_id} has unknown purpose {line.purpose!r}")
+            continue
+        if not line.claim_refs:
+            if line.is_factual():
+                errors.append(f"factual line {line.line_id} has no claim_refs")
+            continue
+        for claim_id in line.claim_refs:
+            if claim_id not in claims_by_id:
+                errors.append(f"line {line.line_id} references unknown claim {claim_id}")
+
+        if not line.is_factual():
+            continue
+        ref_claims = [claims_by_id[cid] for cid in line.claim_refs if cid in claims_by_id]
+        if len(ref_claims) != len(line.claim_refs):
+            continue  # missing claim already reported above
+        coverage = _covered(ref_claims, line.text, config.semantic_coverage_threshold)
+        if coverage is not None and coverage < config.semantic_coverage_threshold:
+            errors.append(
+                f"line {line.line_id} uses wording not in its approved claims "
+                f"(token coverage {coverage:.2f})"
+            )
+        word = _strengthened(ref_claims, line.text)
+        if word:
+            errors.append(
+                f"line {line.line_id} strengthens its claims with unsupported "
+                f"certainty word {word!r}"
+            )
+        if _hedge_dropped(ref_claims, line.text):
+            errors.append(
+                f"line {line.line_id} drops the hedge(s) of its approved claims"
+            )
+
+    # Claim usage tracking must be exact and complete over the package.
+    used = script.all_claim_refs()
+    if set(script.used_claim_ids) != used:
+        errors.append("used_claim_ids is not the exact set of claim_refs")
+    if set(script.unused_approved_claim_ids) & used:
+        errors.append("unused_approved_claim_ids overlaps used_claim_ids")
+    if (set(script.used_claim_ids) | set(script.unused_approved_claim_ids)) != package_claims:
+        errors.append(
+            "used + unused claim ids do not cover the package claim set"
+        )
+
+    # Duration: declared total must match the derived sum; bounds are warnings.
     derived = round(sum(line.estimated_duration_seconds for line in script.lines), 2)
     if abs(derived - script.estimated_duration_seconds) > DURATION_TOLERANCE_SECONDS:
         errors.append(

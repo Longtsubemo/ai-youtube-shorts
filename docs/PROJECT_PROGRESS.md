@@ -136,7 +136,8 @@ replay, and deterministic validation stay the final gate.
 
 Stage 1 now includes 42 original + 38 Gemini/provider tests =
 **80 Stage-1-related tests**; the full suite (including the new Stage-2 Gemini
-tests below) is **1084 passed, 3 skipped** (`python -m pytest tests -q`).
+tests below) is **1084 passed, 3 skipped** at the Stage-2 checkpoint
+(`python -m pytest tests -q`).
 
 ## Stage 2 — Research Pipeline
 
@@ -328,7 +329,7 @@ CLI: `python -m agents.research.research_agent --provider gemini --retriever fir
   `url=''`/`title=''` top-level; url/title/description resolve via
   `metadata.source_url`/`.title`, so markdown content is no longer dropped).
 - **Tests:** +6 (v2 `Document` shapes, metadata fallbacks, keyless/keyed v2
-  client resolution). Full suite now **1084 passed, 3 skipped**.
+  client resolution). Full suite at that point: **1084 passed, 3 skipped**.
 - **Real verification (2026-09-23):** a live `FirecrawlResearchRetriever`
   retrieval returned 5 real sources (youtube/instructables/acsh/reddit) with
   url, title, publisher, domain, and truncated markdown
@@ -368,13 +369,17 @@ artifact shape (`Source`, `FactClaim`, `ResearchPackage`, `TopicCandidate`,
 
 ## Current verification
 
-Full suite: **1084 tests passing, 3 skipped** (`python -m pytest tests -q`):
-42 Stage 1 + 80 Stage 2 + 79 Stage 3 + 53 Stage 4 + 92 Stage 5 + 120 Stage 6 +
+Full suite: **1133 tests passing, 4 skipped** (`python -m pytest tests -q`):
+42 Stage 1 + 80 Stage 2 + 79 Stage 3 + 102 Stage 4 + 92 Stage 5 + 120 Stage 6 +
 117 Stage 7 + 74 Stage 8 + 140 Stage 9 + 123 Stage 10 = 920 deterministic
-tests, plus **158 offline Gemini/Firecrawl provider tests** (38 Stage-1
-foundation/topic + 54 Stage-2 Gemini research + 66 Firecrawl retriever layer).
-The 3 skips are the real-network integration tests (Gemini Stage 1 + Stage 2 +
-Firecrawl), gated by `GEMINI_INTEGRATION_TESTS=1` / `FIRECRAWL_INTEGRATION_TESTS=1`.
+tests, plus **207 offline Gemini/Firecrawl provider tests** (38 Stage-1
+foundation/topic + 54 Stage-2 Gemini research + 66 Firecrawl retriever layer +
+49 Stage-4 Gemini script provider/CLI — `test_script_provider_factory.py`,
+`test_mock_script_provider.py`, `test_gemini_script_provider.py`,
+`test_gemini_script_security.py`, `test_script_cli.py`).
+The 4 skips are the real-network integration tests (Gemini Stage 1 + Stage 2 +
+Stage 4 + Firecrawl), gated by `GEMINI_INTEGRATION_TESTS=1` /
+`FIRECRAWL_INTEGRATION_TESTS=1`.
 
 ## Stage 3 — Fact Checking
 
@@ -468,6 +473,36 @@ Implemented components:
 `tests/test_script_generator.py`, `tests/test_script_validator.py`, plus
 `tests/script_test_utils.py` builders). CLI:
 `python -m agents.script.script_generator`.
+
+### Gemini provider slice (package-based path)
+
+The deterministic mock path above is unchanged. A real Gemini provider was
+added behind a new seam (`agents/script/provider.py`) plus a CLI opt-in, both
+fully wired and smoke-tested:
+
+- `ScriptProvider` protocol + `MockScriptProvider` + `build_script_provider`
+  (`agents/script/provider.py`). Has no fact-check result: the WHOLE package
+  claim set is the working set; scripts carry `result_id=""` and bind to the
+  research package via `package_id`.
+- `GeminiScriptProvider` (`providers/gemini/script_provider.py`) renders
+  `prompts/script/script-v1.txt` (claims-only prompt; `purpose` is a strict
+  `Literal`), uses the shared `GeminiClient.generate_structured` with a bounded
+  malformed-output retry, and maps structured output into the existing `Script`
+  contract (deterministic durations, exact used/unused tracking, provenance).
+- New deterministic gate `validate_script_from_package` (`validator.py`)
+  mirrors `validate_script` against the package: unknown refs, off-claim
+  wording, dropped hedges, and strengthened certainty all fail closed as a
+  `blocked` generation — never a persisted artifact.
+- CLI: `python -m agents.script --provider <mock|gemini> --research
+  <research_package.json>`; `--provider gemini` requires `--research` (exit 2
+  otherwise). Exit codes: insufficient 0, blocked 1, provider/config error 2.
+- New offline tests: `tests/test_script_provider_factory.py`,
+  `tests/test_mock_script_provider.py`, `tests/test_gemini_script_provider.py`,
+  `tests/test_gemini_script_security.py`, `tests/test_script_cli.py`; real
+  key-gated case in `tests/test_gemini_integration.py`.
+- Real smoke produced
+  `data/857acc781211-firecrawl-lite/scripts/script.json` (see
+  `docs/GEMINI_PROVIDER_DESIGN.md` §K for the verified provenance/summary).
 
 ## Stage 5 — Script QA
 
@@ -1039,7 +1074,7 @@ Do not claim any of these are implemented.
 Do not decide these unless the decision is already implemented:
 
 - YouTube data source
-- Production LLM provider (beyond the Stage-1/2 Gemini provider)
+- Production LLM provider (beyond the Stage-1/2/4 Gemini provider)
 - Real analytics provider
 - Colab transport implementation
 - Topic scoring weight tuning
@@ -1060,9 +1095,10 @@ stopped without guessing.
 ### Repository state
 
 - **Branch:** `feat/real-gemini-pipeline`
-- **HEAD commit:** `439a2bb` — `feat: add Gemini provider and Stage 1 integration`
-- Stage 1 Gemini (provider foundation + topic candidates) is committed at HEAD.
-- The current working tree adds **Stage 2 — Gemini Research Provider**
+- **HEAD commit:** `b57f2ee` — `feat: implement real gemini stages 1 and 2`
+- Stage 1 Gemini (provider foundation + topic candidates) and Stage 2 Gemini
+  Research (grounding + Firecrawl retriever) are committed at HEAD.
+- The current working tree adds **Stage 4 — Gemini Script Provider**
   (implemented and fully offline-tested below) plus this documentation
   checkpoint. All of it is deliberately left **uncommitted** for the next
   session to verify and commit when asked. Do not commit anything unless
@@ -1073,16 +1109,23 @@ stopped without guessing.
 ### Stage status
 
 - **Stages 1–10 (deterministic / mock pipeline): COMPLETE**, unchanged, and
-  still the default execution path. All existing 920 deterministic tests stay
-  green.
+  still the default execution path. All existing deterministic tests stay
+  green — full suite at this checkpoint: **1133 passed, 4 skipped**
+  (`python -m pytest tests -q`; the 4 skips are the key-gated real-Gemini
+  integration cases).
 - **Stage 1 real Gemini foundation + integration: COMPLETE** on this branch
   (provider layer, `TopicCandidateProvider` integration, opt-in CLI, offline
   tests, provenance, API-key security).
-- **Stage 2 real Gemini Research: COMPLETE (implemented, tested, NOT committed;
-  real key-gated run NOT performed).** Details below.
-- **Stage 3, 4, 6 real Gemini providers: NOT IMPLEMENTED** (design only —
-  `GeminiEvidenceProvider`, `GeminiVerifier`, `GeminiScriptGenerator`,
-  `GeminiScenePlanner` do not exist).
+- **Stage 2 real Gemini Research: COMPLETE** (implemented, tested, committed;
+  real key-gated run performed — produced
+  `data/857acc781211-firecrawl-lite/research/research_package.json`; run data
+  is gitignored).
+- **Stage 4 real Gemini Script: COMPLETE** on this branch (implemented, tested,
+  NOT committed; real key-gated smoke produced
+  `data/857acc781211-firecrawl-lite/scripts/script.json`).
+- **Stages 3 and 6 real Gemini providers: NOT IMPLEMENTED** (design only —
+  `GeminiEvidenceProvider`, `GeminiVerifier`, `GeminiScenePlanner` do not
+  exist).
 - **Stage 11 (YouTube publishing) and later: NOT IMPLEMENTED**, intentionally
   out of scope.
 
@@ -1143,8 +1186,8 @@ stopped without guessing.
 ### Verification
 
 - Full suite at that point: **1012 passed, 2 skipped**; the suite as of the
-  Firecrawl retriever layer is **1084 passed, 3 skipped**
-  (`python -m pytest tests -q`).
+  Stage-4 Gemini script slice (current uncommitted work) is **1133 passed,
+  4 skipped** (`python -m pytest tests -q`).
 - **54 new offline Stage-2 Gemini/provider tests** (client language: grounding,
   tool wiring, errors/retries; provider: evidence boundary, schema strictness,
   dedup, provenance; security: no key/sdk leakage, mock works without key,
@@ -1178,43 +1221,46 @@ stopped without guessing.
 
 ### Next task
 
-**Verify and (when asked) commit Stage-2 research (Gemini provider + Firecrawl
-retriever layer)**, then continue with single-step real-provider progression
-(next natural candidate: Stage 3 — `GeminiEvidenceProvider` behind the
-`EvidenceProvider` protocol).
+**Verify and (when asked) commit the Stage-4 Gemini script slice** (current
+uncommitted work: `agents/script/provider.py`, `providers/gemini/script_provider.py`,
+`prompts/script/script-v1.txt`, `agents/script/script_generator.py` CLI,
+`agents/script/validator.py` gate, and the 49 new offline tests in the five
+`tests/test_*_script*` files plus the gated real case in
+`tests/test_gemini_integration.py`). A real key-gated smoke already produced
+`data/857acc781211-firecrawl-lite/scripts/script.json`. After committing,
+continue with single-step real-provider progression (next natural candidate:
+Stage 3 — `GeminiEvidenceProvider` behind the `EvidenceProvider` protocol).
 
 Practically, the next session should:
 
-1. Confirm `python -m pytest tests -q` still reports **1084 passed, 3 skipped**.
-2. Inspect `git status`/`git diff` to review the new Firecrawl layer
-   (files listed above).
-3. If a real `GEMINI_API_KEY` is available and the user opts in, optionally run
-   `GEMINI_INTEGRATION_TESTS=1 python -m pytest tests/test_gemini_integration.py -q`
-   and/or `python -m agents.research.research_agent --provider gemini`; otherwise
-   state clearly that the real Gemini Stage-2 run was NOT performed.
-4. To exercise real web retrieval, install the SDK
-   (`pip install "firecrawl>=4.22,<5"`), optionally set `FIRECRAWL_API_KEY`
-   (keyless works, rate-limited), and run
-   `FIRECRAWL_INTEGRATION_TESTS=1 python -m pytest tests/test_firecrawl_integration.py -q`
-   and/or `python -m agents.research.research_agent --provider gemini --retriever firecrawl`.
-   Otherwise state clearly that the real Firecrawl run was NOT performed.
-5. Commit only when explicitly asked.
+1. Confirm `python -m pytest tests -q` still reports **1133 passed, 4 skipped**.
+2. Inspect `git status`/`git diff` to review the new Stage-4 script slice
+   (files listed in the Stage-4 section above and in
+   `docs/GEMINI_PROVIDER_DESIGN.md` §[K]).
+3. If a real `GEMINI_API_KEY` is available and the user opts in, optionally
+   re-run the Stage-4 smoke:
+   `$env:GEMINI_MODEL="gemini-3.5-flash-lite"; python -m agents.script --provider gemini --research data\857acc781211-firecrawl-lite\research\research_package.json`
+   (the `.env` default `gemini-3-flash` may be free-tier quota-exhausted;
+   note the quota metric is per-model), or
+   `GEMINI_INTEGRATION_TESTS=1 python -m pytest tests/test_gemini_integration.py -q`.
+4. Commit only when explicitly asked.
 
 Explicitly do NOT, unless asked:
 
 - implement Stage 3 yet;
-- implement Gemini providers for Stages 3, 4, or 6 yet;
+- implement Gemini providers for Stages 3 or 6 yet;
 - change the deterministic / mock pipeline or any existing data contract;
 - implement video generation / assembly / upload / automation work.
 
 ### How to continue
 
 1. Read `docs/PROJECT_PROGRESS.md` (this file) first.
-2. Read `docs/GEMINI_PROVIDER_DESIGN.md` (provider architecture + Stage 2 plan).
+2. Read `docs/GEMINI_PROVIDER_DESIGN.md` (provider architecture + Stage 2 plan
+   + §[K] Stage-4 script slice).
 3. Read `docs/ARCHITECTURE.md`, `docs/DATA_CONTRACTS.md`,
    `docs/FACT_VERIFICATION.md`, `docs/RESEARCH_PIPELINE.md`.
 4. Confirm the test suite passes
-   (`python -m pytest tests -q` — expect **1084 passed, 3 skipped**).
+   (`python -m pytest tests -q` — expect **1133 passed, 4 skipped**).
 5. Continue with the single next task above. Stages 3–11 stay out of scope.
 6. Do not redo completed stages unless a concrete bug is discovered.
 7. Do not rely on previous OpenCode conversation history.

@@ -76,3 +76,32 @@ def test_real_stage2_research_with_gemini_provider():
 
     api_key = os.environ.get("GEMINI_API_KEY", "")
     assert api_key not in package.to_json()
+
+
+@REQUIRES_KEY
+def test_real_stage4_script_with_gemini_provider():
+    from agents.research.models import ResearchPackage
+    from agents.script.provider import build_script_provider
+
+    package = ResearchPackage.from_json(
+        "data/857acc781211-firecrawl-lite/research/research_package.json"
+    )
+    provider = build_script_provider("gemini")
+    result = provider.generate(package, run_id="gem_int_script")
+
+    assert result.status in ("generated", "blocked")
+    assert result.script is not None or result.blocked_reasons
+    if result.generated:
+        script = result.script
+        artifact = script.to_dict()
+        assert artifact["produced_by"]["provider"] == "gemini"
+        assert artifact["produced_by"]["model"] == provider.model
+        assert artifact["produced_by"]["prompt_version"] == provider.prompt_version
+        assert artifact["data"]["package_id"] == package.package_id
+        assert artifact["data"]["result_id"] == ""
+        # Secrets never leak into the artifact even on a real run.
+        api_key = os.environ.get("GEMINI_API_KEY", "")
+        assert api_key not in script.to_json()
+    else:
+        assert result.blocked_reasons
+        assert all(isinstance(reason, str) and reason for reason in result.blocked_reasons)

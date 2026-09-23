@@ -81,6 +81,7 @@ def make_package(
     topic_id="t_test",
     topic_title="Test topic",
     research_status="ready_for_fact_check",
+    run_id="test-run",
 ) -> ResearchPackage:
     return ResearchPackage.build(
         topic_id=topic_id,
@@ -88,7 +89,7 @@ def make_package(
         research_status=research_status,
         claims=list(claims),
         sources=list(sources),
-        run_id="test-run",
+        run_id=run_id,
         created_at=FIXED_AT,
     )
 

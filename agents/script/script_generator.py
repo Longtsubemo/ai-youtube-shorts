@@ -24,11 +24,17 @@ estimated deterministically from word counts and a configurable speaking rate.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, Sequence
+
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - python-dotenv is a declared dep
+    load_dotenv = None
 
 from agents.qa.fact_checker.models import FactCheckResult
 from agents.script.models import (
@@ -40,7 +46,7 @@ from agents.script.models import (
 )
 from agents.script.validator import ScriptValidation, validate_script
 from agents.seo.models import Provenance, utc_now
-from agents.research.models import FactClaim
+from agents.research.models import FactClaim, ResearchPackage
 from pipeline.state import PipelineState, Stage
 
 # --------------------------------------------------------------------------- #
@@ -389,7 +395,7 @@ def _build_mock_package():
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="python -m agents.script.script_generator",
-        description="Generate a validated Short script from approved claims (mock, no APIs).",
+        description="Generate a validated Short script (mock default, or Gemini over a ResearchPackage).",
     )
     parser.add_argument(
         "--result",
@@ -398,14 +404,26 @@ def main() -> int:
         help="FactCheckResult artifact JSON (default: data/mock/fact_check_result.json)",
     )
     parser.add_argument(
+        "--provider",
+        choices=("mock", "gemini"),
+        default="mock",
+        help="script provider (default: mock; gemini requires GEMINI_API_KEY and --research)",
+    )
+    parser.add_argument(
+        "--research",
+        type=Path,
+        default=None,
+        help="ResearchPackage artifact JSON to generate from (required for --provider gemini)",
+    )
+    parser.add_argument(
         "--run-id",
         default=None,
-        help="run id for the output artifact (default: generated)",
+        help="run id for the output artifact (default: from --research, else generated)",
     )
     parser.add_argument(
         "--allow-review-content",
         action="store_true",
-        help="allow generation when the package verdict is REVIEW",
+        help="allow generation when the package verdict is REVIEW (fact-check path only)",
     )
     parser.add_argument(
         "--out",
@@ -415,7 +433,15 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    from agents.qa.fact_checker.models import FactCheckResult
+    if args.research is not None:
+        return _run_from_package(args)
+    if args.provider == "gemini":
+        print("[script_generator] --provider gemini requires --research <research_package.json>")
+        return 2
+    return _run_from_fact_check(args)
+
+
+def _run_from_fact_check(args) -> int:
     from agents.script.stage import (
         DEFAULT_FACT_CHECK_RESULT_PATH,
         run_script_generation,
@@ -429,8 +455,55 @@ def main() -> int:
     config = ScriptConfig(allow_review_content=args.allow_review_content)
 
     generation = run_script_generation(result, package, config=config, run_id=run_id)
+    _print_result(generation, run_id, args.provider)
+    if not generation.generated:
+        return 0 if generation.status == STATUS_INSUFFICIENT else 1
 
+    out_root = args.out or Path("data")
+    out_path = _write_artifact(generation.script, run_id, out_root)
+    print(f"[script_generator] script written to {out_path}")
+    print(f"[script_generator] run state written to {out_root / run_id / 'state.json'}")
+    return 0
+
+
+def _run_from_package(args) -> int:
+    from agents.script.provider import ScriptProviderError, build_script_provider
+
+    if load_dotenv is not None:
+        load_dotenv()  # honour GEMINI_API_KEY/GEMINI_MODEL from .env (ignored by git)
+
+    if not args.research.is_file():
+        raise SystemExit(f"[script_generator] ResearchPackage not found: {args.research}")
+    package = ResearchPackage.from_json(args.research.read_text(encoding="utf-8"))
+
+    run_id = args.run_id or package.run_id
+    config = ScriptConfig(allow_review_content=args.allow_review_content)
+    try:
+        provider = build_script_provider(args.provider)
+        generation = provider.generate(package, config=config, run_id=run_id)
+    except ScriptProviderError as exc:
+        print(f"[script_generator] provider error: {exc}")
+        return 2
+    except Exception as exc:
+        print(f"[script_generator] provider error: {type(exc).__name__}: {exc}")
+        return 2
+
+    if args.provider == "gemini" and generation.script is not None:
+        generation.script.produced_by = dict(provider.produced_by)
+    _print_result(generation, run_id, args.provider)
+    if not generation.generated:
+        return 0 if generation.status == STATUS_INSUFFICIENT else 1
+
+    out_root = args.out or Path("data")
+    out_path = _write_artifact(generation.script, run_id, out_root)
+    print(f"[script_generator] script written to {out_path}")
+    print(f"[script_generator] run state written to {out_root / run_id / 'state.json'}")
+    return 0
+
+
+def _print_result(generation: ScriptGenerationResult, run_id: str, provider: str) -> None:
     print(f"[script_generator] run_id={run_id}")
+    print(f"[script_generator] provider={provider}")
     print(f"[script_generator] status={generation.status}")
     print(f"[script_generator] message: {generation.message}")
     if generation.blocked_reasons:
@@ -438,9 +511,10 @@ def main() -> int:
         for reason in generation.blocked_reasons:
             print(f"  - {reason}")
     if not generation.generated:
-        return 0 if generation.status == STATUS_INSUFFICIENT else 1
+        return
 
     script = generation.script
+    print(f"[script_generator] produced_by={script.produced_by.get('model')}")
     print(f"[script_generator] script_id={script.script_id}")
     print(f"[script_generator] title: {script.title}")
     print(f"[script_generator] estimated duration: {script.estimated_duration_seconds}s")
@@ -457,7 +531,8 @@ def main() -> int:
             f"refs={refs}  {line.text}"
         )
 
-    out_root = args.out or Path("data")
+
+def _write_artifact(script: Script, run_id: str, out_root: Path) -> Path:
     out_path = out_root / run_id / "scripts" / "script.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(script.to_json(), encoding="utf-8")
@@ -470,10 +545,7 @@ def main() -> int:
     state.advance_to(Stage.SCRIPT_GENERATION)
     state.add_artifact(Stage.SCRIPT_GENERATION, out_path)
     state.save(state_path)
-
-    print(f"[script_generator] script written to {out_path}")
-    print(f"[script_generator] run state written to {state_path}")
-    return 0
+    return out_path
 
 
 if __name__ == "__main__":
