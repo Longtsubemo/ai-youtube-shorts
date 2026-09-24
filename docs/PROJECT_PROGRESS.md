@@ -886,7 +886,7 @@ Implemented components:
   is a gate over arbitrary record shapes, and corrupt/missing inputs produce
   issues (P13/P15), not exceptions
 - `run_policy_qa` (`stage.py`): consumes the Stage-8 `VideoQAResult` + its
-  Stage-7 `VideoGenerationResult` + Stage-6 `ProductionPlan` + Stage-5
+  Stage-7 `VideoGenerationResult` + Stage-6 `ProductionPlan` + Stage-3
   `FactCheckResult` + Stage-4 `Script`; a video result that targets a DIFFERENT
   `production_plan_id` than the plan raises `PolicyQAError` before anything
   runs (exit 2)

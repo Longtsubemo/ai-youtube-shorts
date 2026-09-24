@@ -14,7 +14,7 @@ Usage:
     # chain from a previous PolicyQAResult (re-review after a fix):
     python -m agents.qa.policy --previous data/<run_id>/production/policy_qa_result.json
 
-Loads the Stage-3 Script, Stage-5 FactCheckResult, Stage-6 ProductionPlan,
+Loads the Stage-4 Script, Stage-3 FactCheckResult, Stage-6 ProductionPlan,
 Stage-7 VideoGenerationResult, and Stage-8 VideoQAResult, runs all 15
 deterministic policy/safety checks, prints the verdict/issues/risk summary, and
 writes a PolicyQAResult artifact (plus run state advanced to
@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import sys
 import uuid
 from pathlib import Path
 
@@ -56,6 +57,12 @@ from agents.qa.policy.stage import (
 from pipeline.state import PipelineState, Stage
 
 
+def _fail(message: str) -> int:
+    """Print a clean fatal error to stderr and return the input-error exit code."""
+    print(f"[policy_qa] error: {message}", file=sys.stderr)
+    return 2
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="python -m agents.qa.policy",
@@ -69,13 +76,13 @@ def main() -> int:
         "--script",
         type=Path,
         default=DEFAULT_SCRIPT_PATH,
-        help="Stage-3 Script artifact JSON (default: data/mock/script.json)",
+        help="Stage-4 Script artifact JSON (default: data/mock/script.json)",
     )
     parser.add_argument(
         "--fact-check",
         type=Path,
         default=DEFAULT_FACT_CHECK_PATH,
-        help="Stage-5 FactCheckResult JSON (default: data/mock/fact_check_result.json)",
+        help="Stage-3 FactCheckResult JSON (default: data/mock/fact_check_result.json)",
     )
     parser.add_argument(
         "--plan",
@@ -133,13 +140,16 @@ def main() -> int:
         ("VideoGenerationResult", args.video_result),
     ):
         if not path.is_file():
-            raise SystemExit(f"[policy_qa] {name} not found: {path}")
+            return _fail(f"{name} not found: {path}")
 
     previous = None
     if args.previous is not None:
         if not args.previous.is_file():
-            raise SystemExit(f"[policy_qa] previous policy result not found: {args.previous}")
-        previous = load_policy_qa_result(args.previous)
+            return _fail(f"previous policy result not found: {args.previous}")
+        try:
+            previous = load_policy_qa_result(args.previous)
+        except (AttributeError, ValueError, KeyError, TypeError, OSError) as exc:
+            return _fail(f"could not load previous policy result {args.previous}: {exc}")
 
     config = PolicyQAConfig(policy_version=args.policy_version or "policy_rules_v1")
 
@@ -166,8 +176,9 @@ def main() -> int:
         )
         policy_result = run_policy_qa(inputs, config=config, run_id=run_id)
     except PolicyQAError as exc:
-        print(f"[policy_qa] error: {exc}")
-        return 2
+        return _fail(str(exc))
+    except (AttributeError, ValueError, KeyError, TypeError, OSError) as exc:
+        return _fail(f"could not load input artifacts: {exc}")
 
     if previous is not None:
         policy_result = dataclasses.replace(

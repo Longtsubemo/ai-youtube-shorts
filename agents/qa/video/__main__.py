@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import sys
 import uuid
 from pathlib import Path
 
@@ -43,6 +44,12 @@ from agents.qa.video.stage import (
 )
 from agents.video_generation.stage import load_production_plan
 from pipeline.state import PipelineState, Stage
+
+
+def _fail(message: str) -> int:
+    """Print a clean fatal error to stderr and return the input-error exit code."""
+    print(f"[video_qa] error: {message}", file=sys.stderr)
+    return 2
 
 
 def main() -> int:
@@ -89,17 +96,26 @@ def main() -> int:
     args = parser.parse_args()
 
     if not args.result.is_file():
-        raise SystemExit(f"[video_qa] VideoGenerationResult not found: {args.result}")
+        return _fail(f"VideoGenerationResult not found: {args.result}")
     if not args.plan.is_file():
-        raise SystemExit(f"[video_qa] ProductionPlan not found: {args.plan}")
-    plan = load_production_plan(args.plan)
-    result = load_video_generation_result(args.result)
+        return _fail(f"ProductionPlan not found: {args.plan}")
+    try:
+        plan = load_production_plan(args.plan)
+    except (AttributeError, ValueError, KeyError, TypeError, OSError) as exc:
+        return _fail(f"could not load ProductionPlan {args.plan}: {exc}")
+    try:
+        result = load_video_generation_result(args.result)
+    except (AttributeError, ValueError, KeyError, TypeError, OSError) as exc:
+        return _fail(f"could not load VideoGenerationResult {args.result}: {exc}")
 
     previous = None
     if args.previous is not None:
         if not args.previous.is_file():
-            raise SystemExit(f"[video_qa] previous QA result not found: {args.previous}")
-        previous = load_video_qa_result(args.previous)
+            return _fail(f"previous QA result not found: {args.previous}")
+        try:
+            previous = load_video_qa_result(args.previous)
+        except (AttributeError, ValueError, KeyError, TypeError, OSError) as exc:
+            return _fail(f"could not load previous QA result {args.previous}: {exc}")
 
     if args.run_id:
         run_id = args.run_id

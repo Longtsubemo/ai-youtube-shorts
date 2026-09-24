@@ -154,10 +154,55 @@ class TestCli:
         ]
         assert issue and issue[0]["gate"] == "hard"
 
-    def test_missing_input_is_an_error(self, tmp_path):
+    def test_missing_input_exits_2_without_traceback(self, tmp_path):
         proc = _run_cli(tmp_path, ("--fact-check", str(tmp_path / "nope.json")))
-        assert proc.returncode != 0
-        assert "PolicyQAError" not in proc.stderr  # clean SystemExit path
+        assert proc.returncode == 2
+        assert "Traceback" not in proc.stderr
+        assert "PolicyQAError" not in proc.stderr
+        assert not (tmp_path / "cli-test" / "state.json").exists()
+        assert not (tmp_path / "cli-test" / "production" / "policy_qa_result.json").exists()
+
+    def test_missing_qaresult_is_p15_review(self, tmp_path):
+        # An ABSENT Stage-8 VideoQAResult is the designed "no prior gate yet"
+        # state: the gate grades it P15 REVIEW (exit 1, artifact still written).
+        proc = _run_cli(tmp_path, ("--qa-result", str(tmp_path / "nope_qa.json")))
+        assert proc.returncode == 1, proc.stderr
+        assert "Traceback" not in proc.stderr
+        artifact = tmp_path / "cli-test" / "production" / "policy_qa_result.json"
+        data = json.loads(artifact.read_text(encoding="utf-8"))
+        assert data["data"]["overall_verdict"] == "REVIEW"
+        assert "P15" in {issue["check_id"] for issue in data["data"]["issues"]}
+        assert (tmp_path / "cli-test" / "state.json").is_file()
+
+    def test_corrupt_qaresult_exits_2_without_traceback(self, tmp_path):
+        bad = tmp_path / "bad_qa.json"
+        bad.write_text("{not json", encoding="utf-8")
+        proc = _run_cli(tmp_path, ("--qa-result", str(bad)))
+        assert proc.returncode == 2
+        assert "Traceback" not in proc.stderr
+        assert "error" in proc.stderr
+        assert not (tmp_path / "cli-test" / "production" / "policy_qa_result.json").exists()
+        assert not (tmp_path / "cli-test" / "state.json").exists()
+
+    def test_corrupt_required_input_exits_2_without_traceback(self, tmp_path):
+        bad = tmp_path / "bad_script.json"
+        bad.write_text("{not json", encoding="utf-8")
+        proc = _run_cli(tmp_path, ("--script", str(bad)))
+        assert proc.returncode == 2
+        assert "Traceback" not in proc.stderr
+        assert "error" in proc.stderr
+        assert not (tmp_path / "cli-test" / "production" / "policy_qa_result.json").exists()
+        assert not (tmp_path / "cli-test" / "state.json").exists()
+
+    def test_corrupt_previous_exits_2_without_traceback(self, tmp_path):
+        bad_prev = tmp_path / "bad_prev.json"
+        bad_prev.write_text("{not json", encoding="utf-8")
+        proc = _run_cli(tmp_path, ("--previous", str(bad_prev)))
+        assert proc.returncode == 2
+        assert "Traceback" not in proc.stderr
+        assert "error" in proc.stderr
+        assert not (tmp_path / "cli-test" / "production" / "policy_qa_result.json").exists()
+        assert not (tmp_path / "cli-test" / "state.json").exists()
 
     def test_mismatched_plan_pairing_exits_2(self, tmp_path):
         import dataclasses

@@ -163,8 +163,80 @@ def test_cli_previous_chains_qa_result(tmp_path):
 
 def test_cli_missing_result_is_an_error(tmp_path):
     proc = _run_cli("--result", str(tmp_path / "missing.json"), "--out", str(tmp_path))
-    assert proc.returncode != 0
+    assert proc.returncode == 2
     assert "not found" in proc.stderr
+    assert not list(tmp_path.rglob("state.json"))
+
+
+def test_cli_missing_plan_is_an_error(tmp_path):
+    proc = _run_cli("--plan", str(tmp_path / "missing.json"), "--out", str(tmp_path))
+    assert proc.returncode == 2
+    assert "not found" in proc.stderr
+    assert not list(tmp_path.rglob("state.json"))
+
+
+def test_cli_missing_previous_is_an_error(tmp_path):
+    plan, result = healthy_pair()
+    _write_scenario(tmp_path, (plan, result))
+    proc = _run_cli(
+        "--plan", str(tmp_path / "plan.json"),
+        "--result", str(tmp_path / "result.json"),
+        "--run-id", "missing-prev",
+        "--out", str(tmp_path),
+        "--previous", str(tmp_path / "missing_prev.json"),
+    )
+    assert proc.returncode == 2
+    assert "not found" in proc.stderr
+    assert not (tmp_path / "missing-prev" / "production" / "qa_result.json").exists()
+    assert not (tmp_path / "missing-prev" / "state.json").exists()
+
+
+def test_cli_corrupt_result_exits_2_without_traceback(tmp_path):
+    (tmp_path / "bad.json").write_text("{not json", encoding="utf-8")
+    proc = _run_cli("--result", str(tmp_path / "bad.json"), "--out", str(tmp_path))
+    assert proc.returncode == 2
+    assert "Traceback" not in proc.stderr
+    assert "error" in proc.stderr
+    assert not list(tmp_path.rglob("qa_result.json"))
+    assert not list(tmp_path.rglob("state.json"))
+
+
+def test_cli_corrupt_plan_exits_2_without_traceback(tmp_path):
+    (tmp_path / "bad.json").write_text("{not json", encoding="utf-8")
+    proc = _run_cli("--plan", str(tmp_path / "bad.json"), "--out", str(tmp_path))
+    assert proc.returncode == 2
+    assert "Traceback" not in proc.stderr
+    assert "error" in proc.stderr
+    assert not list(tmp_path.rglob("qa_result.json"))
+    assert not list(tmp_path.rglob("state.json"))
+
+
+def test_cli_corrupt_previous_exits_2_without_traceback(tmp_path):
+    plan, result = healthy_pair()
+    _write_scenario(tmp_path, (plan, result))
+    (tmp_path / "bad_prev.json").write_text("{not json", encoding="utf-8")
+    proc = _run_cli(
+        "--plan", str(tmp_path / "plan.json"),
+        "--result", str(tmp_path / "result.json"),
+        "--run-id", "corrupt-prev",
+        "--out", str(tmp_path),
+        "--previous", str(tmp_path / "bad_prev.json"),
+    )
+    assert proc.returncode == 2
+    assert "Traceback" not in proc.stderr
+    assert "error" in proc.stderr
+    assert not (tmp_path / "corrupt-prev" / "production" / "qa_result.json").exists()
+    assert not (tmp_path / "corrupt-prev" / "state.json").exists()
+
+
+def test_cli_invalid_json_schema_exits_2_without_traceback(tmp_path):
+    (tmp_path / "empty.json").write_text("{}", encoding="utf-8")
+    proc = _run_cli("--result", str(tmp_path / "empty.json"), "--out", str(tmp_path))
+    assert proc.returncode == 2
+    assert "Traceback" not in proc.stderr
+    assert "error" in proc.stderr
+    assert not list(tmp_path.rglob("qa_result.json"))
+    assert not list(tmp_path.rglob("state.json"))
 
 
 def test_cli_loader_round_trip(tmp_path):

@@ -1,7 +1,7 @@
 """Stage-9 entrypoint: artifacts -> PolicyQAResult (policy/safety gate).
 
-QA-side only (docs/ARCHITECTURE.md): the stage consumes the Stage-3 Script,
-the Stage-5 FactCheckResult, the Stage-6 ProductionPlan, the Stage-7
+QA-side only (docs/ARCHITECTURE.md): the stage consumes the Stage-4 Script,
+the Stage-3 FactCheckResult, the Stage-6 ProductionPlan, the Stage-7
 VideoGenerationResult, and the Stage-8 VideoQAResult, runs the deterministic
 15-check policy/safety gate (rules.py/checks.py/validator.py), and emits a
 `PolicyQAResult` under `data/<run_id>/production/policy_qa_result.json`.
@@ -134,10 +134,20 @@ def policy_inputs_from_paths(
     video_qa_path: str | Path | None = None,
     **_: Any,
 ) -> PolicyInputs:
-    """Load an input bundle from explicit artifact JSON paths (for the CLI)."""
+    """Load an input bundle from explicit artifact JSON paths (for the CLI).
+
+    Mirrors `load_committed_fixtures` for the SOLO optional input (the Stage-8
+    VideoQAResult): an ABSENT qa-result path is treated as `None` (no prior
+    gate yet), which check P15 grades as a soft-ERROR REVIEW rather than a
+    fatal error. The four required content artifacts (script, fact-check,
+    plan, video result) must all exist; a missing REQUIRED path fails (the CLI
+    pre-checks those before calling this loader).
+    """
     video_qa = None
     if video_qa_path is not None:
-        video_qa = load_video_qa_result(video_qa_path)
+        qa_path = Path(video_qa_path)
+        if qa_path.is_file():
+            video_qa = load_video_qa_result(qa_path)
     return build_policy_inputs(
         script=load_script(script_path),
         fact_check=load_fact_check_result(fact_check_path),

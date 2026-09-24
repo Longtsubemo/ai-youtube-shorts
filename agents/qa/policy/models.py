@@ -2,7 +2,7 @@
 
 Stage 9 is the deterministic, network-free, GPU-free, API-free, provider-
 independent pre-publication POLICY / SAFETY GATE over the end-to-end artifact
-chain: Stage-3 Script, Stage-5 FactCheckResult, Stage-6 ProductionPlan,
+chain: Stage-4 Script, Stage-3 FactCheckResult, Stage-6 ProductionPlan,
 Stage-7 VideoGenerationResult, and Stage-8 VideoQAResult
 (docs/PROJECT_PROGRESS.md Stage 9 / docs/POLICY_AND_SAFETY.md / docs/
 DATA_CONTRACTS.md §11). It is a gate, not a new creation stage: it evaluates

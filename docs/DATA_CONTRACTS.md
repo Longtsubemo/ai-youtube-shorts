@@ -931,7 +931,7 @@ ProductionPlan → VideoGenerationResult → VideoQAResult:
 ```
 
 - **Inputs:** the Stage-8 `VideoQAResult` plus its Stage-7
-  `VideoGenerationResult` and Stage-6 `ProductionPlan` (+ Stage-5
+  `VideoGenerationResult` and Stage-6 `ProductionPlan` (+ Stage-3
   `FactCheckResult` and Stage-4 `Script`). A `video_generation_result` whose
   `production_plan_id` differs from the plan's raises `PolicyQAError` before
   any checks run; a STALE `qa_result` (`target_ref` ≠ the plan id) is graded
