@@ -63,7 +63,7 @@ video/             Future video build steps (generation, editing, subtitles, aud
 data/              Working artifacts per run + committed mock fixtures under data/mock/
 prompts/           Prompt templates per agent
 config/            Configuration (populated later; secrets go in .env)
-tests/             Test suite for the implemented stages (1133 passing, 4 gated skips)
+tests/             Test suite for the implemented stages (1229 passing, 5 gated skips)
 ```
 
 ## Current development stage
@@ -79,7 +79,8 @@ Implemented stages (all deterministic, mock-backed, offline):
 - **Stage 4 — Script Generation** (`agents/script/`): approved claims only
   → validated 30–60s Short script with per-line claim traceability.
 - **Stage 5 — Script QA** (`agents/qa/script/`): deterministic quality
-  control (13 checks, 9 hard gates, weighted score) → PASS / REVISE /
+  control (13 checks, fail-closed hard gates incl. claim/package binding,
+  weighted score) → PASS / REVISE /
   REJECT with actionable issues; never rewrites the script.
 - **Stage 6 — Scene Planning** (`agents/scene_planner/`): QA-passed script →
   provider-independent versioned `ProductionPlan` (`production.json`), the
@@ -138,14 +139,14 @@ python -m agents.qa.video                    # Stage 8: video QA (PASS/REVIEW/RE
 python -m agents.qa.policy                   # Stage 9: policy/publishing QA (PASS/REVIEW/REJECT)
 python -m agents.human_approval              # Stage 10: human approval (APPROVED/CHANGES_REQUESTED/REJECTED)
 
-# run the whole test suite (1133 passing, 4 gated skips)
+# run the whole test suite (1229 passing, 5 gated skips)
 python -m pytest tests -q
 ```
 
 Each CLI writes its artifact under `data/<run_id>/` and records run state
 in `state.json`.
 
-### Optional real Gemini providers (Stages 1, 2 & 4)
+### Optional real Gemini providers (Stages 1, 2, 3 & 4)
 
 The deterministic mock providers are the default. You can opt into real Gemini
 behind the same stage protocols instead (`GEMINI_API_KEY` required, set it in
@@ -158,6 +159,9 @@ python -m agents.research.research_agent --provider gemini # Stage 2 research (g
 python -m agents.research.research_agent --provider gemini --enable-url-context
 # real web retrieval instead of Google Search grounding (keyless Firecrawl free tier):
 python -m agents.research.research_agent --provider gemini --retriever firecrawl
+# Stage 3 fact checking (Firecrawl verification retrieval + Gemini evidence/judging):
+python -m agents.qa.fact_checker --provider gemini --retriever firecrawl ^
+    --package data\<run_id>\research\research_package.json
 # script generation directly from a research package (no fact-check needed):
 python -m agents.script --provider gemini --research data\<run_id>\research\research_package.json
 ```
@@ -168,8 +172,16 @@ Firecrawl retriever) actually returned become research sources — nothing is ev
 invented. Without a key the gemini path fails cleanly (exit 2) and writes no
 artifact. The Firecrawl retriever needs `pip install "firecrawl>=4.22,<5"`;
 `FIRECRAWL_API_KEY` is optional (rate-limited keyless free tier). The Stage-4
-gemini path renders only the approved research package claims and its script
-must pass deterministic validation before anything is persisted.
+gemini path renders only claim texts taken from the research package (no
+invented refs) and its script must pass deterministic validation before
+anything is persisted. The Stage-3 gemini path retrieves verification evidence
+per package source (strict URL match), requires every excerpt to appear
+verbatim in the retrieved content, and lets the deterministic gates mint the
+final `PASS/REVIEW/REJECT` — Gemini only proposes which supplied evidence
+relates in what way.
+
+Stages 5/6 have **no Gemini providers yet** — every Gemini path here is an
+explicit opt-in and defaults to deterministic mocks.
 
 ## Design documentation
 

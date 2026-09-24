@@ -8,10 +8,12 @@ coverage while preserving their certainty level.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from agents.script.script_generator import ScriptConfig
-from agents.script.validator import validate_script
+from agents.script.validator import validate_script, validate_script_from_package
 
 from script_test_utils import (
     FIXED_AT,
@@ -355,3 +357,228 @@ def test_validation_has_to_dict_report():
     assert report["valid"] is True
     assert isinstance(report["errors"], list)
     assert isinstance(report["warnings"], list)
+
+
+# --------------------------------------------------------------------------- #
+# validate_script_from_package: the no-fact-check package path
+# --------------------------------------------------------------------------- #
+
+
+def _package_pair():
+    """Trio of PASS claims; the approval set equals the package claim set."""
+    return build_pair(
+        claims=[
+            (OCTOPUS_THREE_HEARTS, "fact"),
+            (OCTOPUS_SWIM, "explanation"),
+            (OCTOPUS_BLUE, "explanation"),
+        ]
+    )
+
+
+def _package_lines(package, texts=None):
+    texts = (
+        texts if texts is not None else (OCTOPUS_THREE_HEARTS, OCTOPUS_SWIM, OCTOPUS_BLUE)
+    )
+    lines = [
+        {
+            "text": "You probably didn't know this, but the answer explains it.",
+            "purpose": "hook",
+            "claim_refs": (package.claims[0].claim_id,),
+        }
+    ]
+    for no, claim in enumerate(package.claims[: len(texts)]):
+        lines.append(
+            {
+                "text": texts[no],
+                "purpose": ("fact", "explanation", "explanation")[no],
+                "claim_refs": (claim.claim_id,),
+            }
+        )
+    return lines
+
+
+def _package_validate(script, package):
+    return validate_script_from_package(script, package, DEFAULT_CFG)
+
+
+def test_package_valid_script_passes():
+    result, package = _package_pair()
+    script = make_script(result, lines=_package_lines(package))
+    validation = _package_validate(script, package)
+    assert validation.valid, validation.errors
+    assert not validation.errors
+
+
+def test_package_id_mismatch_fails():
+    result, package = _package_pair()
+    script = replace(
+        make_script(result, lines=_package_lines(package)), package_id="pkg_wrong"
+    )
+    validation = _package_validate(script, package)
+    assert not validation.valid
+    assert any("does not match" in error for error in validation.errors)
+
+
+def test_package_missing_provenance_fails():
+    result, package = _package_pair()
+    script = make_script(result, lines=_package_lines(package), provenance=None)
+    validation = _package_validate(script, package)
+    assert not validation.valid
+    assert any("provenance" in error for error in validation.errors)
+
+
+def test_package_no_fact_or_explanation_line_fails():
+    result, package = _package_pair()
+    script = make_script(
+        result,
+        lines=[
+            {"text": "You probably didn't know this.", "purpose": "hook", "claim_refs": ()},
+            {"text": "Follow me for more.", "purpose": "call_to_action", "claim_refs": ()},
+        ],
+    )
+    validation = _package_validate(script, package)
+    assert not validation.valid
+    assert any("no fact/explanation line" in error for error in validation.errors)
+
+
+def test_package_factual_line_requires_claim_refs():
+    result, package = _package_pair()
+    claim_id = package.claims[0].claim_id
+    script = make_script(
+        result,
+        lines=[
+            _hook(claim_id),
+            {"text": OCTOPUS_THREE_HEARTS, "purpose": "fact", "claim_refs": ()},
+        ],
+    )
+    validation = _package_validate(script, package)
+    assert not validation.valid
+    assert any("no claim_refs" in error for error in validation.errors)
+
+
+def test_package_unknown_claim_ref_rejected():
+    result, package = _package_pair()
+    claim_id = package.claims[0].claim_id
+    script = make_script(
+        result,
+        lines=[
+            _hook(claim_id),
+            {"text": OCTOPUS_THREE_HEARTS, "purpose": "fact", "claim_refs": ("cl_does_not_exist",)},
+        ],
+    )
+    validation = _package_validate(script, package)
+    assert not validation.valid
+    assert any("unknown claim" in error for error in validation.errors)
+
+
+def test_package_out_of_coverage_wording_blocked():
+    result, package = _package_pair()
+    claim_id = package.claims[0].claim_id
+    script = make_script(
+        result,
+        lines=[
+            _hook(claim_id),
+            {"text": "Researchers discovered that octopuses evolved hearts millions of years ago.", "purpose": "fact", "claim_refs": (claim_id,)},
+        ],
+    )
+    validation = _package_validate(script, package)
+    assert not validation.valid
+    assert any("not in its approved claims" in error for error in validation.errors)
+
+
+def test_package_strengthened_certainty_blocked():
+    result, package = _package_pair()
+    claim_id = package.claims[0].claim_id
+    script = make_script(
+        result,
+        lines=[
+            _hook(claim_id),
+            {"text": "Researchers proved octopuses evolved three hearts.", "purpose": "fact", "claim_refs": (claim_id,)},
+        ],
+    )
+    validation = _package_validate(script, package)
+    assert not validation.valid
+    assert any("unsupported" in error or "strengthens" in error for error in validation.errors)
+
+
+def test_package_dropped_hedge_blocked():
+    result, package = build_pair(claims=[(OCTOPUS_SMARTEST, "inference")])
+    claim_id = package.claims[0].claim_id
+    script = make_script(
+        result,
+        lines=[
+            _hook(claim_id),
+            {"text": "Octopuses are the smartest invertebrates in the sea.", "purpose": "fact", "claim_refs": (claim_id,)},
+        ],
+    )
+    validation = _package_validate(script, package)
+    assert not validation.valid
+    assert any("hedge" in error for error in validation.errors)
+
+
+def test_package_hedge_kept_passes():
+    result, package = build_pair(claims=[(OCTOPUS_SMARTEST, "inference")])
+    claim_id = package.claims[0].claim_id
+    script = make_script(
+        result,
+        lines=[
+            _hook(claim_id),
+            {"text": OCTOPUS_SMARTEST, "purpose": "fact", "claim_refs": (claim_id,)},
+        ],
+    )
+    assert _package_validate(script, package).valid
+
+
+def test_package_used_ids_must_match_refs():
+    result, package = _package_pair()
+    script = make_script(
+        result,
+        lines=_package_lines(package),
+        used=("cl_wrong",),
+    )
+    validation = _package_validate(script, package)
+    assert not validation.valid
+    assert any("used_claim_ids" in error for error in validation.errors)
+
+
+def test_package_used_unused_must_cover_package_set():
+    result, package = build_octopus_pair()
+    script = make_script(result, lines=_package_lines(package))
+    validation = _package_validate(script, package)
+    assert not validation.valid
+    assert any("package claim set" in error for error in validation.errors)
+
+
+def test_package_used_unused_must_be_disjoint():
+    result, package = _package_pair()
+    first = package.claims[0].claim_id
+    script = make_script(
+        result,
+        lines=_package_lines(package),
+        used=(first,),
+        unused=(first,),
+    )
+    validation = _package_validate(script, package)
+    assert not validation.valid
+    assert any("overlaps" in error for error in validation.errors)
+
+
+def test_package_declared_duration_must_match_derived():
+    result, package = _package_pair()
+    script = make_script(
+        result,
+        lines=_package_lines(package),
+        estimated_duration=9999.0,
+    )
+    validation = _package_validate(script, package)
+    assert not validation.valid
+    assert any("does not match" in error for error in validation.errors)
+
+
+def test_package_duration_below_min_is_warning_not_error():
+    result, package = _package_pair()
+    script = make_script(result, lines=_package_lines(package))
+    cfg = ScriptConfig(min_duration_seconds=999.0)
+    validation = validate_script_from_package(script, package, cfg)
+    assert validation.valid
+    assert any("below the" in warning for warning in validation.warnings)

@@ -551,7 +551,8 @@ Example (committed fixture `data/mock/script_qa_result.json`):
   `category`, `severity` (`ERROR`/`WARNING`/`INFO`), `gate`
   (`hard`/`soft`), `dimension`, `check`, and affected line/claim ids for the
   audit chain.
-- **9 hard gates** (each is a `gate=hard` ERROR → REJECT):
+- **Hard gates** (each is a `gate=hard` ERROR → REJECT; fail-closed — any of
+  these means the script can never pass):
   1. no factual traceability (factual line without claim refs)
   2. references a REJECTED claim
   3. references a REVIEW (unapproved) claim
@@ -559,8 +560,14 @@ Example (committed fixture `data/mock/script_qa_result.json`):
   5. material contradiction (negation never said by the approved claims)
   6. material certainty strengthening (unsupported certainty word, hard gate)
   7. invented factual detail (token coverage below the 0.5 threshold)
-  8. empty / structurally unusable script
+  8. empty / structurally unusable script, duplicate line ids, or an
+     unsupported line purpose (malformed artifact)
   9. package not approved for scripting (package verdict REJECT or REVIEW)
+  10. script package_id does not bind to the FactCheckResult's package_id
+      (and a missing package binding is fatal)
+  11. claim accounting is inconsistent (`used_claim_ids ∪
+      unused_approved_claim_ids` must exactly equal the approved claim set)
+  12. script artifact has no provenance (origin cannot be verified)
 - **Score (internal quality, NOT a performance prediction):**
   `dimension = clamp(100 − penalties, 0, 100)`; ERROR hard −45, ERROR soft −20,
   WARNING −6, INFO −1; `overall = round(weighted mean, 1)`. Default weights

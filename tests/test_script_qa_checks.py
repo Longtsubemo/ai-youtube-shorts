@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from agents.qa.script.checks import CHECKS
 from agents.qa.script.models import ScriptQAConfig
 from agents.research.models import claim_id_for
+from agents.script.models import ScriptLine
 from script_qa_test_utils import (
     OCTOPUS_BLUE,
     OCTOPUS_SMARTEST,
@@ -197,6 +200,58 @@ def test_traceability_missing_provenance_is_fatal():
         i.severity == "ERROR" and "no provenance" in i.message
         for i in issues.get("claim_traceability", [])
     )
+
+
+def test_traceability_package_mismatch_is_fatal():
+    result, package = make_octopus_pair()
+    script = replace(_octopus_script(result, package), package_id="rp_other_package")
+    issues = _issues_by_category(run_checks_only(script, result, package))
+    errors = [i for i in issues.get("claim_traceability", []) if i.gate == "hard"]
+    assert errors and any("does not bind to the fact-check result package" in i.message for i in errors)
+
+
+def test_traceability_missing_package_binding_is_fatal():
+    result, package = make_octopus_pair()
+    script = replace(_octopus_script(result, package), package_id="")
+    issues = _issues_by_category(run_checks_only(script, result, package))
+    errors = [i for i in issues.get("claim_traceability", []) if i.gate == "hard"]
+    assert errors and any("does not bind to the fact-check result package" in i.message for i in errors)
+
+
+def test_traceability_accounting_must_cover_approved():
+    result, package = make_octopus_pair()
+    approved = result.approved_claims
+    # Accounting declares only two of three approved claims: incomplete.
+    script = make_script(
+        result,
+        lines=[
+            {"text": OCTOPUS_THREE_HEARTS, "purpose": "fact", "claim_refs": (approved[0],)},
+            {"text": "Thanks for watching.", "purpose": "call_to_action", "claim_refs": ()},
+        ],
+        used=(approved[0],),
+    )
+    script = replace(script, unused_approved_claim_ids=(approved[2],))
+    issues = _issues_by_category(run_checks_only(script, result, package))
+    errors = [i for i in issues.get("claim_traceability", []) if i.gate == "hard"]
+    assert errors and any("claim accounting is inconsistent" in i.message for i in errors)
+
+
+def test_traceability_accounting_rejects_foreign_unused_id():
+    result, package = make_octopus_pair()
+    approved = result.approved_claims
+    # unused_approved_claim_ids names a claim that is not in the approved set.
+    script = make_script(
+        result,
+        lines=[
+            {"text": OCTOPUS_THREE_HEARTS, "purpose": "fact", "claim_refs": (approved[0],)},
+            {"text": "Thanks for watching.", "purpose": "call_to_action", "claim_refs": ()},
+        ],
+        used=(approved[0],),
+    )
+    script = replace(script, unused_approved_claim_ids=("cl_ghost",))
+    issues = _issues_by_category(run_checks_only(script, result, package))
+    errors = [i for i in issues.get("claim_traceability", []) if i.gate == "hard"]
+    assert errors and any("claim accounting is inconsistent" in i.message for i in errors)
 
 
 # --------------------------------------------------------------------------- #
@@ -482,6 +537,51 @@ def test_structure_empty_fails_hard():
         i.severity == "ERROR" and i.gate == "hard" and "empty" in i.message
         for i in issues.get("structure", [])
     )
+
+
+def test_structure_duplicate_line_ids_fail_hard():
+    result, package = make_octopus_pair()
+    approved = result.approved_claims
+    base = make_script(
+        result,
+        lines=[
+            {"text": OCTOPUS_THREE_HEARTS, "purpose": "fact", "claim_refs": (approved[0],)},
+            {"text": "Thanks for watching.", "purpose": "call_to_action", "claim_refs": ()},
+        ],
+        used=(approved[0],),
+    )
+    # Corrupt the artifact AFTER validation: two lines sharing one line_id.
+    script = replace(
+        base,
+        lines=(
+            ScriptLine("ln_01", OCTOPUS_THREE_HEARTS, (approved[0],), "fact"),
+            ScriptLine("ln_01", "Thanks for watching.", (), "call_to_action"),
+        ),
+    )
+    issues = _issues_by_category(run_checks_only(script, result, package))
+    errors = [i for i in issues.get("structure", []) if i.gate == "hard"]
+    assert errors and any("duplicate line ids" in i.message for i in errors)
+
+
+def test_structure_unknown_purpose_fails_hard():
+    result, package = make_octopus_pair()
+    approved = result.approved_claims
+    base = make_script(
+        result,
+        lines=[
+            {"text": OCTOPUS_THREE_HEARTS, "purpose": "fact", "claim_refs": (approved[0],)},
+            {"text": "Thanks for watching.", "purpose": "call_to_action", "claim_refs": ()},
+        ],
+        used=(approved[0],),
+    )
+    script = replace(
+        base,
+        lines=(ScriptLine("ln_01", OCTOPUS_THREE_HEARTS, (approved[0],), "fact"),
+               ScriptLine("ln_02", "Thanks for watching.", (), "bogus_purpose"),),
+    )
+    issues = _issues_by_category(run_checks_only(script, result, package))
+    errors = [i for i in issues.get("structure", []) if i.gate == "hard"]
+    assert errors and any("unsupported purpose" in i.message for i in errors)
 
 
 # --------------------------------------------------------------------------- #

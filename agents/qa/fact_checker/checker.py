@@ -63,13 +63,39 @@ class FactChecker:
             claim_results, self._config
         )
 
+        provider_meta = getattr(self._provider, "produced_by", None)
+        verifier_meta = getattr(self._verifier, "produced_by", None)
+        if provider_meta is not None:
+            provider_label = provider_meta.get("provider") or self._provider.__class__.__name__
+            model_label = (verifier_meta or {}).get("model") or self._verifier.__class__.__name__
+            prompt_version = (verifier_meta or {}).get("prompt_version") or provider_meta.get("prompt_version")
+            produced_by = {
+                "prompt_version": prompt_version,
+                "provider": provider_label,
+                "model": model_label,
+            }
+            provenance_source = f"{provider_label}:{model_label}"
+            provenance_provider = provider_label
+            provenance_model = model_label
+            provenance_prompt_version = prompt_version
+        else:
+            produced_by = {
+                "prompt_version": None,
+                "provider": self._provider.__class__.__name__,
+                "model": self._verifier.__class__.__name__,
+            }
+            provenance_source = f"{self._provider.__class__.__name__}:{self._verifier.__class__.__name__}"
+            provenance_provider = None
+            provenance_model = "MockVerifier"
+            provenance_prompt_version = None
+
         provenance = Provenance(
             generated_by=GENERATED_BY,
-            source=f"{self._provider.__class__.__name__}:{self._verifier.__class__.__name__}",
+            source=provenance_source,
             created_at=self._created_at or utc_now(),
-            provider=None,
-            model="MockVerifier",
-            prompt_version=None,
+            provider=provenance_provider,
+            model=provenance_model,
+            prompt_version=provenance_prompt_version,
         )
         result = FactCheckResult(
             result_id=result_id_for(self._run_id, package.package_id),
@@ -86,11 +112,7 @@ class FactChecker:
             provenance=provenance,
             created_at=self._created_at or provenance.created_at,
             run_id=self._run_id or package.run_id,
-            produced_by={
-                "prompt_version": None,
-                "provider": self._provider.__class__.__name__,
-                "model": self._verifier.__class__.__name__,
-            },
+            produced_by=produced_by,
         )
         return result.validate()
 

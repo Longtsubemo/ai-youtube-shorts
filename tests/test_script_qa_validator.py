@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 
 import pytest
 
@@ -14,6 +15,7 @@ from agents.qa.script.validator import (
     aggregate_verdict,
     evaluate_script,
 )
+from agents.script.models import ScriptLine
 from script_qa_test_utils import (
     FIXED_AT,
     octopus_ok_lines,
@@ -175,6 +177,91 @@ def test_hard_gates_reject(story):
     else:  # package_reject
         result, package = make_octopus_pair(package_verdict="REJECT")
         script = make_script(result, lines=octopus_ok_lines(result))
+
+    qa = evaluate_script(
+        script,
+        result,
+        {c.claim_id: c for c in package.claims},
+        run_id="script-test",
+        created_at=FIXED_AT,
+    )
+    assert qa.overall_verdict == VERDICT_REJECT, story
+    assert any(issue.gate == "hard" for issue in qa.issues), story
+
+
+@pytest.mark.parametrize(
+    "story",
+    [
+        "package_mismatch",
+        "missing_package_binding",
+        "accounting_incomplete",
+        "accounting_foreign_unused",
+        "duplicate_line_ids",
+        "unknown_purpose",
+    ],
+)
+def test_binding_accounting_contract_gates_reject(story):
+    """Fail-closed gates: binding, accounting, and malformed script never PASS."""
+    result, package = make_octopus_pair()
+    approved = result.approved_claims
+    lines = octopus_ok_lines(result)
+    script = make_script(result, lines=lines)
+    if story == "package_mismatch":
+        script = replace(script, package_id="rp_other_package")
+    elif story == "missing_package_binding":
+        script = replace(script, package_id="")
+    elif story == "accounting_incomplete":
+        base = make_script(
+            result,
+            lines=[
+                {"text": lines[2]["text"], "purpose": "fact", "claim_refs": (approved[0],)},
+                {"text": "Thanks for watching.", "purpose": "call_to_action", "claim_refs": ()},
+            ],
+            used=(approved[0],),
+        )
+        script = replace(base, unused_approved_claim_ids=(approved[2],))
+    elif story == "accounting_foreign_unused":
+        base = make_script(
+            result,
+            lines=[
+                {"text": lines[2]["text"], "purpose": "fact", "claim_refs": (approved[0],)},
+                {"text": "Thanks for watching.", "purpose": "call_to_action", "claim_refs": ()},
+            ],
+            used=(approved[0],),
+        )
+        script = replace(base, unused_approved_claim_ids=("cl_ghost",))
+    elif story == "duplicate_line_ids":
+        base = make_script(
+            result,
+            lines=[
+                {"text": lines[2]["text"], "purpose": "fact", "claim_refs": (approved[0],)},
+                {"text": lines[6]["text"], "purpose": "conclusion", "claim_refs": (approved[0],)},
+            ],
+            used=(approved[0],),
+        )
+        script = replace(
+            base,
+            lines=(
+                ScriptLine("ln_01", lines[2]["text"], (approved[0],), "fact"),
+                ScriptLine("ln_01", lines[6]["text"], (approved[0],), "conclusion"),
+            ),
+        )
+    else:  # unknown_purpose
+        base = make_script(
+            result,
+            lines=[
+                {"text": lines[2]["text"], "purpose": "fact", "claim_refs": (approved[0],)},
+                {"text": "Thanks for watching.", "purpose": "call_to_action", "claim_refs": ()},
+            ],
+            used=(approved[0],),
+        )
+        script = replace(
+            base,
+            lines=(
+                ScriptLine("ln_01", lines[2]["text"], (approved[0],), "fact"),
+                ScriptLine("ln_02", "Thanks for watching.", (), "bogus_purpose"),
+            ),
+        )
 
     qa = evaluate_script(
         script,

@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from agents.qa.fact_checker.evidence import meaningful_tokens
 from agents.qa.fact_checker.models import FactCheckResult
 from agents.research.models import FactClaim
-from agents.script.models import FACTUAL_PURPOSES, Script, ScriptLine
+from agents.script.models import FACTUAL_PURPOSES, PURPOSE_VALUES, Script, ScriptLine
 from agents.qa.script.models import (
     CATEGORY_DIMENSION,
     QACheckRecord,
@@ -373,6 +373,29 @@ def check_claim_traceability(
                 "claim_traceability",
                 "ERROR",
                 "unused_approved_claim_ids overlaps used_claim_ids",
+                gate=GATE_HARD,
+                check="claim_traceability",
+            )
+        )
+    if not script.package_id.strip() or script.package_id != fact_check_result.package_id:
+        issues.append(
+            _issue(
+                "claim_traceability",
+                "ERROR",
+                f"script package_id {script.package_id!r} does not bind to the "
+                f"fact-check result package {fact_check_result.package_id!r}",
+                gate=GATE_HARD,
+                check="claim_traceability",
+            )
+        )
+    declared = set(script.used_claim_ids) | set(script.unused_approved_claim_ids)
+    if declared != approved:
+        issues.append(
+            _issue(
+                "claim_traceability",
+                "ERROR",
+                "claim accounting is inconsistent: used_claim_ids | "
+                "unused_approved_claim_ids must exactly equal the approved claim set",
                 gate=GATE_HARD,
                 check="claim_traceability",
             )
@@ -826,6 +849,32 @@ def check_structure(
             )
         )
         return issues
+    unknown = next(
+        (line for line in script.lines if line.purpose not in PURPOSE_VALUES), None
+    )
+    if unknown is not None:
+        issues.append(
+            _issue(
+                "structure",
+                "ERROR",
+                f"line {unknown.line_id} uses unsupported purpose "
+                f"{unknown.purpose!r} (malformed script)",
+                line_ids=[unknown.line_id],
+                gate=GATE_HARD,
+                check="structure",
+            )
+        )
+    line_ids = [line.line_id for line in script.lines]
+    if len(set(line_ids)) != len(line_ids):
+        issues.append(
+            _issue(
+                "structure",
+                "ERROR",
+                "script contains duplicate line ids (malformed script)",
+                gate=GATE_HARD,
+                check="structure",
+            )
+        )
     if not any(line.purpose in ("fact", "explanation") for line in script.lines):
         issues.append(
             _issue(

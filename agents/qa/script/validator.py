@@ -10,10 +10,13 @@ Verdict rules (docs/DATA_CONTRACTS.md §8.1 / PROJECT_PROGRESS Stage 5):
     REVISE  any severity-ERROR issue that is not a hard gate
     PASS    otherwise (warnings/info only, or clean)
 
-Hard gates (per-issue `gate=hard`) cover the 9 required conditions:
-no factual traceability; rejected/review/unknown claim references; material
+Hard gates (per-issue `gate=hard`) cover the fail-closed conditions: no
+factual traceability; rejected/review/unknown claim references; material
 contradiction; material certainty strengthening; invented factual detail;
-empty/unusable script; package not approved for scripting.
+empty/unusable or malformed script (duplicate line ids, unsupported purpose);
+package not approved for scripting; missing script provenance; script package
+binding not matching the fact-check result; and inconsistent claim accounting
+(used | unused must exactly equal the approved claim set).
 """
 
 from __future__ import annotations

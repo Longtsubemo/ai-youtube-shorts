@@ -1,4 +1,4 @@
-"""Manual runner for the Stage-3 fact-check stage (no external APIs).
+"""Manual runner for the Stage-3 fact-check stage.
 
 Usage:
     python -m agents.qa.fact_checker
@@ -7,28 +7,40 @@ Usage:
     python -m agents.qa.fact_checker --package data/<run_id>/research/research_package.json
     python -m agents.qa.fact_checker --evidence data/mock/fact_check_evidence.json
 
+    # real Gemini fact checking (Firecrawl verification retrieval):
+    python -m agents.qa.fact_checker --provider gemini \
+        --package data/<run_id>/research/research_package.json \
+        --retriever firecrawl
+
 Loads a ResearchPackage (building the mock one deterministically if none is
-given), runs the checker against the mock evidence provider, prints claim-level
-results + the package verdict, and writes a FactCheckResult artifact (plus run
-state) under data/<run_id>/research/.
+given), runs the checker, prints claim-level results + the package verdict, and
+writes a FactCheckResult artifact (plus run state) under data/<run_id>/research/.
+
+The default provider is the deterministic mock (no network, no key). The gemini
+provider requires GEMINI_API_KEY and — for real evidence — a retriever; provider
+errors (missing key, auth, quota, API or parse/validation failures, unknown
+provider/retriever) exit with code 2 and write no partial artifact.
 """
 
 from __future__ import annotations
 
 import argparse
+import sys
 import uuid
 from pathlib import Path
 
 from agents.qa.fact_checker.evidence import (
     DEFAULT_EVIDENCE_DATA_PATH,
+    EvidenceProviderError,
     MockEvidenceProvider,
 )
 from agents.qa.fact_checker.models import FactCheckResult
 from agents.qa.fact_checker.stage import load_research_package, run_fact_check
 from agents.research.models import ResearchPackage
-from agents.research.provider import MockResearchProvider
+from agents.research.provider import MockResearchProvider, ResearchProviderError
 from agents.research.stage import load_topic_selection, run_research
 from pipeline.state import PipelineState, Stage
+from providers.gemini.errors import GeminiProviderError
 
 DEFAULT_SELECTION_PATH = Path("data") / "mock" / "topic_selection.json"
 
@@ -42,7 +54,7 @@ def build_mock_package() -> ResearchPackage:
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="python -m agents.qa.fact_checker",
-        description="Run evidence-grounded fact checking locally with mock data.",
+        description="Run evidence-grounded fact checking with the mock or Gemini provider.",
     )
     parser.add_argument(
         "--package",
@@ -54,7 +66,18 @@ def main() -> int:
         "--evidence",
         type=Path,
         default=DEFAULT_EVIDENCE_DATA_PATH,
-        help="mock evidence fixture JSON",
+        help="mock evidence fixture JSON (mock provider only)",
+    )
+    parser.add_argument(
+        "--provider",
+        choices=("mock", "gemini"),
+        default="mock",
+        help="fact-check provider (default: mock, deterministic and network-free)",
+    )
+    parser.add_argument(
+        "--retriever",
+        default=None,
+        help="real web retrieval for --provider gemini (currently: firecrawl)",
     )
     parser.add_argument("--run-id", default=None, help="run id (default: generated)")
     parser.add_argument("--out", type=Path, default=None, help="output path for the FactCheckResult artifact")
@@ -74,8 +97,30 @@ def main() -> int:
             f"{package.topic_title!r} ({len(package.claims)} claims, {len(package.sources)} sources)"
         )
 
-    provider = MockEvidenceProvider(data_path=args.evidence)
-    result = run_fact_check(package, provider=provider, run_id=run_id)
+    if args.provider == "gemini":
+        if args.retriever is not None and args.retriever != "firecrawl":
+            print(f"[fact_checker] unknown retriever: {args.retriever!r}", file=sys.stderr)
+            return 2
+        components = _build_gemini(args)
+        if components is None:
+            return 2
+        provider, verifier = components.provider, components.verifier
+    else:
+        if args.retriever is not None:
+            print("[fact_checker] --retriever is only supported with --provider gemini", file=sys.stderr)
+            return 2
+        provider = MockEvidenceProvider(data_path=args.evidence)
+        verifier = None
+
+    try:
+        result = run_fact_check(package, provider=provider, verifier=verifier, run_id=run_id)
+    except (EvidenceProviderError, ResearchProviderError, GeminiProviderError) as exc:
+        if args.provider == "gemini":
+            print(f"[fact_checker] provider error: {exc}", file=sys.stderr)
+            return 2
+        raise
+    if _evidence_provider_failed(args, result):
+        return 2
 
     out_path = args.out or Path("data") / run_id / "research" / "fact_check_result.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -105,6 +150,38 @@ def main() -> int:
     print(f"[fact_checker] artifact written to {out_path}")
     print(f"[fact_checker] run state written to {Path('data') / run_id / 'state.json'}")
     return 0
+
+
+def _build_gemini(args) -> "object | None":
+    """Build the gemini (provider, verifier) pair; returns None on error."""
+    from agents.qa.fact_checker.provider import build_fact_check_components
+
+    try:
+        return build_fact_check_components("gemini", retriever=args.retriever)
+    except (EvidenceProviderError, ResearchProviderError, GeminiProviderError) as exc:
+        print(f"[fact_checker] provider error: {exc}", file=sys.stderr)
+        return None
+
+
+def _evidence_provider_failed(args, result) -> bool:
+    """True when a gemini evidence-provider failure was recorded as an issue.
+
+    The checker records a per-source provider failure as an `evidence_issue`
+    (no evidence -> REVIEW) so the shared mock path stays graceful, but the
+    gemini slice treats a provider/API/parse/validation failure as fatal:
+    abort with code 2 and never write a partial artifact (no false REVIEW).
+    """
+    if args.provider != "gemini":
+        return False
+    for issue in result.evidence_issues:
+        if issue.startswith("evidence provider failed"):
+            print(
+                "[fact_checker] provider error during evidence collection; "
+                f"aborting without artifact: {issue}",
+                file=sys.stderr,
+            )
+            return True
+    return False
 
 
 def _short(text: str, limit: int = 140) -> str:

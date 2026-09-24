@@ -47,7 +47,7 @@ def main() -> int:
 
     print(f"[orchestrator] Run {run_id} initialized at {run_dir}")
     print(f"[orchestrator] State written to {state_path}")
-    print("[orchestrator] No pipeline stages are implemented yet.")
+    print("[orchestrator] Scaffold only: stages are run individually via their CLIs.")
     return 0
 
 

@@ -5,7 +5,7 @@
 - **Gemini Provider Architecture: IMPLEMENTED for Stages 1, 2 & 4**
 - **Stage 1 Gemini (topic selection): IMPLEMENTED**
 - **Stage 2 Gemini Research: IMPLEMENTED** (offline-tested; a real key-gated
-  run is the only unperformed verification)
+  run produced `data/857acc781211-firecrawl-lite/research/research_package.json`)
 - **Stage 2 web retrieval (Firecrawl retriever layer): IMPLEMENTED**
   (a real Firecrawl network run produced `data/857acc781211-firecrawl-lite/`
   locally; the `firecrawl` SDK stays out of `providers/gemini/` tests)
@@ -13,7 +13,8 @@
   (offline-tested + a real key-gated smoke produced the Stage-4 `Script`
   artifact; deterministic `validate_script_from_package` is the final gate)
 - **Stages 3 & 6 Gemini providers (`GeminiEvidenceProvider`, `GeminiVerifier`,
-  `GeminiScenePlanner`): NOT IMPLEMENTED** (design only)
+  `GeminiScenePlanner`): NOT IMPLEMENTED** (design only; Stage 3 — Fact
+  Checking — is the next implementation target, plan in §L)
 
 This document records the inspection/design pass over the existing Stages 1–6
 implementation and the plan for introducing a real Gemini provider
@@ -21,7 +22,8 @@ without breaking the deterministic mock providers, data contracts, provenance,
 tests, or the Stage 1–6 boundaries and determinism.
 
 Stages 1–10 are complete and deterministic (branch `feat/real-gemini-pipeline`,
-HEAD `b57f2ee`), **1133 tests pass (4 skipped)**. Stage 11 (YouTube upload)
+HEAD `b0f5f2d`), **1148 tests pass (4 skipped)** on the current working tree
+(HEAD itself: 1133). Stage 11 (YouTube upload)
 remains out of scope.
 
 The Stage-1 slice of this plan is implemented (see **[H] Implemented —
@@ -215,9 +217,11 @@ persisting. Concretely:
 ## G. Explicit statement
 
 **Stage 1 Gemini integration IS IMPLEMENTED; Stage 2 Gemini Research IS
-IMPLEMENTED (offline-tested, real key-gated run NOT performed); the Stage-2
-Firecrawl web-retrieval layer IS IMPLEMENTED (offline-tested, real Firecrawl
-run NOT performed); Stage 3, 4, and 6 Gemini adapters are design only.**
+IMPLEMENTED (a real key-gated run produced
+`data/857acc781211-firecrawl-lite/research/research_package.json`); the Stage-2
+Firecrawl web-retrieval layer IS IMPLEMENTED (a real Firecrawl run produced the
+same run dir); Stage 4's `GeminiScriptProvider` IS IMPLEMENTED (see §K).
+Stages 3 and 6 Gemini adapters are design only.**
 Implemented files for the Stage-1 slice:
 `providers/gemini/` + `agents/seo/provider.py` +
 `prompts/seo/topic_candidates-v1.txt` + offline tests. Implemented files for the
@@ -229,7 +233,8 @@ Stage-2 slice: `providers/gemini/research_provider.py` + `generate_research` in
 param/`--retriever firecrawl` wiring +
 `prompts/research/facts-retrieval-v1.txt` + offline tests. Default paths stay
 `None → Mock*`; the mock runner, contracts, provenance schemes, and ID rules are
-unchanged; the full suite (1133 passed, 4 skipped) is green. Stage 4's
+unchanged; the full suite (1148 passed, 4 skipped on the working tree; 1133 at
+HEAD) is green. Stage 4's
 `GeminiScriptProvider` is implemented (section K); Stages 3 and 6 keep
 mock-first defaults.
 
@@ -300,8 +305,9 @@ the CLI gemini-path tests.
 
 ## I. Implemented — Stage 2 slice (Gemini Research Provider)
 
-**Status: IMPLEMENTED** (this branch, offline-tested and wiring-complete; the
-only unperformed verification is a real key-gated network run, gated by
+**Status: IMPLEMENTED** (this branch, offline-tested; a real key-gated run
+produced
+`data/857acc781211-firecrawl-lite/research/research_package.json`, gated by
 `GEMINI_INTEGRATION_TESTS=1`). `MockResearchProvider` remains the default /
 offline path.
 
@@ -589,3 +595,93 @@ Implements the package-based script path (repo stage SCRIPT_GENERATION,
   script/script-v1`, `result_id=""`, `package_id` bound, no API key in the
   artifact. The `.env` default model (`gemini-3-flash`) was free-tier
   quota-exhausted, hence the explicit model override for the smoke.
+
+## L. Implemented — Stage 3 Fact Checking slice
+
+**Status:** implemented (real Gemini adapters behind the existing Stage-3
+protocols). The deterministic / mock fact checker (Stage 3,
+`agents/qa/fact_checker/`) remains the default path; the real Gemini adapters
+below are opt-in via `--provider gemini`:
+
+| Piece | Protocol / seam | Status |
+|---|---|---|
+| `GeminiEvidenceProvider` (`providers/gemini/evidence_provider.py`) | `EvidenceProvider` (`agents/qa/fact_checker/evidence.py`) | IMPLEMENTED |
+| `GeminiVerifier` (`providers/gemini/verifier_provider.py`) | `Verifier` (`agents/qa/fact_checker/verifier.py`) | IMPLEMENTED |
+
+Pipeline:
+
+```
+ResearchPackage
+    ↓
+per-source verification retrieval (Firecrawl; strict URL match)
+    ↓
+GeminiEvidenceProvider   — extracts *verbatim* evidence excerpts per Source
+    ↓
+GeminiVerifier           — judges claim vs supplied evidence (supplied ids only)
+    ↓
+deterministic Python validation — final gate (rules, not vibes)
+    ↓
+FactCheckResult
+    ↓
+approved claims
+    ↓
+Stage 4 Script Generation
+```
+
+Architectural principle: **Gemini is NOT the source of truth.** Stage 3 judges
+each claim against **retrieved evidence**; Gemini is the reasoning/judging layer
+over that evidence, and deterministic Python validation stays the final gate
+(`FACT_VERIFICATION.md` §4 — same discipline as the Stage 1/2/4 slices).
+
+Verdict vocabulary is the existing evidence levels
+`DIRECT/PARTIAL/INSUFFICIENT/NONE/CONTRADICTORY` (§B adapter table; gate to
+`PASS/REVIEW/REJECT`). The alternate claim-level vocabulary discussed during
+planning (`SUPPORTED`, `PARTIALLY_SUPPORTED`, `CONTRADICTED`,
+`INSUFFICIENT_EVIDENCE`) was reconciled away during design — the existing
+levels are kept and the final verdict vocabulary has no new categories.
+
+Firecrawl role: **Stage 2** = research/discovery (broad source retrieval);
+**Stage 3** = verification-oriented evidence retrieval. `GeminiEvidenceProvider`
+retrieves each package source's own URL (`TopicDescriptor(topic_id=source_id,
+title=source.url, description=source.title)`), keeps only the retrieved page(s)
+whose normalized URL equals the source URL, and never calls the model when the
+source was not retrieved (honest `insufficient` → REVIEW).
+
+Implementation notes (mirroring the Stage-1/2/4 slices):
+
+- **Evidence boundary.** The model never proposes URLs, source ids, or sources:
+  the `EvidenceSetSchema` has no URL/source-id field; `Evidence.source_id` is
+  bound by the provider to the package source being verified. Every excerpt
+  must be a verbatim (whitespace/punctuation-normalized) substring of the
+  retrieved content, else it is dropped (never evidence); output is bounded by
+  `max_evidence_per_source` and deduplicated by `evidence_id_for`.
+- **Verifier boundary.** The model judges only `{claim, supplied evidence,
+  source metadata}` (no outside knowledge, no invented evidence). It may cite
+  only supplied evidence ids; referencing an unknown id or echoing a mismatched
+  claim_id raises `GeminiSchemaValidationError` (fail closed). Source-level
+  fields (`supporting/contradiction/insufficient_source_ids`,
+  `discovery_only`, `contradiction_present`, `speculation_as_fact`,
+  `stronger_than_evidence`) are computed deterministically, mirroring
+  MockVerifier; the model's label is reconciled into the existing
+  `ClaimAssessment` the gates already understand.
+- **Provider failure discipline.** Missing key → `GeminiConfigurationError`;
+  all SDK failures map to the typed `GeminiProviderError` hierarchy. The CLI
+  (`--provider mock|gemini`, `--retriever firecrawl`, `--evidence`)
+  exits 2 on any provider config/API/parse/validation error or on a recorded
+  evidence-provider failure, and never writes a partial artifact.
+- **Factory.** `build_fact_check_components(name, *, retriever=...)`
+  (`agents/qa/fact_checker/provider.py`) lazy-imports only the requested pair
+  (mock default needs neither the Gemini nor the Firecrawl SDK).
+- **Provenance.** Both adapters expose `produced_by = {prompt_version,
+  provider: "gemini", model}`; `FactChecker` stamps
+  `produced_by`/`provenance` from it (mock behavior unchanged).
+- **Tests.** Offline coverage in `tests/test_gemini_evidence_provider.py`,
+  `tests/test_gemini_verifier.py`, `tests/test_fact_check_gemini_factory.py`,
+  `tests/test_gemini_fact_check_security.py` (stubbed client, `socket.blocked`,
+  no network/key) plus CLI wiring in `tests/test_fact_checker_cli.py`; one gated
+  real case in `tests/test_gemini_integration.py`
+  (`GEMINI_INTEGRATION_TESTS=1`). A real smoke ran against
+  `data/857acc781211-firecrawl-lite/research/research_package.json`
+  (`GEMINI_MODEL=gemini-3.5-flash-lite`, `--retriever firecrawl`); the
+  discovery-tier sources produced the honest expected outcome
+  (package `REJECT`, no invented evidence, no secret leakage).

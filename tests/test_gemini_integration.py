@@ -79,6 +79,34 @@ def test_real_stage2_research_with_gemini_provider():
 
 
 @REQUIRES_KEY
+def test_real_stage3_fact_check_with_gemini_provider():
+    from agents.qa.fact_checker.checker import FactChecker
+    from agents.qa.fact_checker.provider import build_fact_check_components
+    from agents.research.models import ResearchPackage
+
+    components = build_fact_check_components("gemini", retriever="firecrawl")
+    package = ResearchPackage.from_json(
+        "data/857acc781211-firecrawl-lite/research/research_package.json"
+    )
+    provider, verifier = components.provider, components.verifier
+    result = FactChecker(provider, verifier=verifier).check(package)
+
+    artifact = result.to_dict()
+    assert artifact["produced_by"]["provider"] == "gemini"
+    assert artifact["produced_by"]["model"] == provider.model
+    assert artifact["produced_by"]["prompt_version"] == provider.prompt_version
+    assert artifact["data"]["provenance"]["model"] == provider.model
+    assert artifact["data"]["package_verdict"] in ("pass", "review", "reject")
+    assert artifact["data"]["claim_results"], "every claim must get a verdict"
+    for claim in artifact["data"]["claim_results"]:
+        assert claim["verdict"] in ("PASS", "REVIEW", "REJECT")
+        assert isinstance(claim["rationale"], str) and claim["rationale"]
+    # Secrets never leak into the artifact even on a real run.
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    assert api_key not in result.to_json()
+
+
+@REQUIRES_KEY
 def test_real_stage4_script_with_gemini_provider():
     from agents.research.models import ResearchPackage
     from agents.script.provider import build_script_provider
