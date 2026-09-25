@@ -764,7 +764,7 @@ Implemented components:
 
 ## Stage 8 — Video QA
 
-**Status:** COMPLETE
+**Status:** COMPLETE — reviewed & committed at `ee4b7d9` (audit: `docs/AUDIT_QA_STAGES.md`)
 
 **Implementation location:** `agents/qa/video/`
 
@@ -834,7 +834,7 @@ Implemented components:
 
 ### Test status
 
-74 Stage 8 tests (`tests/test_video_qa_models.py`,
+80 Stage 8 tests (`tests/test_video_qa_models.py`,
 `tests/test_video_qa_checks.py`, `tests/test_video_qa_validator.py`,
 `tests/test_video_qa_stage.py`, `tests/test_video_qa_safety.py`, plus
 `tests/video_qa_test_utils.py` builders). CLI:
@@ -842,7 +842,7 @@ Implemented components:
 
 ## Stage 9 — Policy / Publishing QA
 
-**Status:** COMPLETE
+**Status:** COMPLETE — reviewed & committed at `ee4b7d9` (audit: `docs/AUDIT_QA_STAGES.md`)
 
 **Implementation location:** `agents/qa/policy/`
 
@@ -929,7 +929,7 @@ Implemented components:
 
 ### Test status
 
-140 Stage 9 tests (`tests/test_policy_qa_models.py`,
+144 Stage 9 tests (`tests/test_policy_qa_models.py`,
 `tests/test_policy_qa_checks.py`, `tests/test_policy_qa_validator.py`,
 `tests/test_policy_qa_stage.py`, `tests/test_policy_qa_safety.py`, plus
 `tests/policy_qa_test_utils.py` builders). CLI:
@@ -1129,16 +1129,19 @@ stopped without guessing.
 ### Repository state
 
 - **Branch:** `feat/real-gemini-pipeline`
-- **HEAD commit:** `b0f5f2d` — `feat: implement real gemini script generation`
-  (all three real Gemini slices — Stages 1, 2 & 4 — are committed at HEAD).
-- **Working tree (uncommitted):** documentation updates only (this checkpoint
-  plus the audit/stale-doc fixes) and 15 new offline validator tests for the
-  package path in `tests/test_script_validator.py`. Nothing else pending. Do not
-  commit anything unless explicitly asked.
+- **HEAD commit:** `ee4b7d9` — `feat: harden video and policy QA stages`
+  (commits the Stage 8/9 review fixes + the `docs/AUDIT_QA_STAGES.md` audit doc).
+  The real Gemini slices (Stages 1, 2, 3 & 4) are committed earlier in history
+  (through `6a56390 feat: implement Gemini fact checking and script QA`).
+- **Working tree: CLEAN** — nothing modified, nothing untracked, nothing staged.
+  The Stage 8/9 implementation and its audit doc are already committed; do not
+  stage or commit anything unless explicitly asked.
 - Prior committed baseline (pre-Gemini): `0b054d44` — `feat: implement stage 10
   human approval`, still reachable in history.
 - `.env` and `data/<run_id>/` (real run artifacts) are gitignored; only
   `data/mock/*` fixtures are tracked.
+- `docs/AUDIT_QA_STAGES.md` is **TRACKED** (committed at `ee4b7d9`), not
+  untracked.
 
 ### Canonical stage numbering
 
@@ -1159,30 +1162,34 @@ Stage 1 Topic Selection      — real Gemini (GeminiTopicProvider), committed
     ↓
 Stage 2 Research + Firecrawl — real Gemini (GeminiResearchProvider), committed
     ↓
-Stage 3 Fact Checking        — deterministic only; NO Gemini  ← NEXT target
+Stage 3 Fact Checking        — real Gemini (GeminiEvidenceProvider + GeminiVerifier), committed
     ↓
 Stage 4 Script Generation    — real Gemini (GeminiScriptProvider), committed
     ↓
-Stage 5 Script QA            — deterministic only; NO Gemini
+Stage 5 Script QA            — deterministic only; NO Gemini (no LLM seam by design)
     ↓
-Stage 6 Scene Planning       — deterministic only; NO Gemini
+Stage 6 Scene Planning       — deterministic / mock-first; NO Gemini
+    ↓
+Stage 7 Video Generation     — deterministic / mock-first; NO Gemini
+    ↓
+Stage 8 Video QA             — deterministic; NO Gemini
+    ↓
+Stage 9 Policy / Publish QA  — deterministic; NO Gemini
 ```
 
 Stage 4 currently has a **standalone / package path**
 (`agents/script/provider.py`): it can consume a ResearchPackage directly, with
 no fact-check needed. This is why the real smoke generated a script even though
-Stage 3 Fact Checking does not exist yet — the package is the grounding and the
-deterministic `validate_script_from_package` is the final gate. This is an
-intentional design, not a defect (see `docs/GEMINI_PROVIDER_DESIGN.md` §K).
+Stage 3 Fact Checking did not exist yet at that time — the package is the
+grounding and the deterministic `validate_script_from_package` is the final
+gate. This is an intentional design, not a defect (see
+`docs/GEMINI_PROVIDER_DESIGN.md` §K).
 
 ### Stage status
 
-- **Stages 1–10 (deterministic / mock pipeline): COMPLETE**, unchanged, and
-  still the default execution path. Full suite on the current working tree:
-  **1148 passed, 4 skipped** (`python -m pytest tests -q`; the 4 skips are the
-  key-gated real-Gemini + Firecrawl integration cases). At HEAD (`b0f5f2d`) the
-  suite was **1133 passed, 4 skipped**; the +15 are today's new package-path
-  validator tests (uncommitted).
+- **Full suite at HEAD (`ee4b7d9`): 1239 passed, 5 skipped** (`python -m pytest
+  tests -q`; the 5 skips are the key-gated real-Gemini + Firecrawl integration
+  cases). The deterministic/mock pipeline remains the default execution path.
 - **Stage 1 real Gemini (topic selection): COMPLETE** on this branch (provider
   layer, `TopicCandidateProvider` integration, opt-in CLI, offline tests,
   provenance, API-key security). Real Gemini execution verified; deterministic
@@ -1197,13 +1204,18 @@ intentional design, not a defect (see `docs/GEMINI_PROVIDER_DESIGN.md` §K).
   `data/857acc781211-firecrawl-lite/scripts/script.json`). The real artifact
   has `result_id=""` — **intentional** on the ResearchPackage → Script path,
   because `Script.result_id` names the upstream FactCheckResult id; it becomes
-  a real id once Stage 3 exists and Script Generation runs after a fact-check.
-- **Stage 3 real Gemini Fact Checking (`GeminiEvidenceProvider`,
-  `GeminiVerifier`): NOT IMPLEMENTED** — deterministic mock-only today; this is
-  the next implementation target (plan below).
-- **Stages 5 and 6 real Gemini (`GeminiScenePlanner`): NOT IMPLEMENTED** —
-  deterministic mock-only; do not touch in the Stage-3 work. Stages 7–10 stay
-  deterministic.
+  a real id once Script Generation runs after a fact-check.
+- **Stage 3 real Gemini Fact Checking: COMPLETE** (implemented, tested,
+  committed at `6a56390`; `GeminiEvidenceProvider` + `GeminiVerifier` behind
+  the existing protocols — see the Stage 3 section and
+  `docs/GEMINI_PROVIDER_DESIGN.md` §L).
+- **Stages 5, 6 and 7 real Gemini: NOT IMPLEMENTED** — deterministic
+  mock-first by design; do not touch.
+- **Stage 8 (Video QA) and Stage 9 (Policy / Publishing QA): COMPLETE,
+  deterministic, NO Gemini** — reviewed and hardened (see the Stage 8/9
+  sections and `docs/AUDIT_QA_STAGES.md`); committed at `ee4b7d9`.
+- **Stage 10 (Human Approval): existing implementation, NOT touched** by the
+  Stage 8/9 work.
 - **Stage 11 (YouTube publishing) and later: NOT IMPLEMENTED**, intentionally
   out of scope.
 
@@ -1341,25 +1353,65 @@ result came back `REJECT` with **zero** approved claims is correctly **REJECTED*
 refs, and the new accounting-inconsistency gate). See the final report in the
 task session; nothing is committed.
 
-### Next task — Gemini providers for Stages 5/6 — PLANNED, NOT STARTED
+### Completed task — repo Stages 8 & 9 (Video QA + Policy QA) — COMPLETE, REVIEWED, COMMITTED
 
-**NEXT:** implement Gemini providers for **Stage 5 (Script QA,
-`agents/qa/script/`)** and/or **Stage 6 (Scene Planning,
-`agents/scene_planner/`)** behind their existing protocols. Not started; do not
-begin without an explicit user ask.
+Repo Stages 8 and 9 are the deterministic, offline, GPU-free, API-free quality /
+policy gates (`agents/qa/video/`, `agents/qa/policy/`). Both were audited
+(`docs/AUDIT_QA_STAGES.md`): **0 blocking bugs**. A CLI hardening pass (BUG B1)
+then made the exit-code contract strict and uniform: missing / corrupt /
+schema-invalid input files exit **2** with a clean stderr message instead of a
+`SystemExit` or traceback; **no fatal path writes a partial artifact/state**;
+`--previous` chaining shares the same discipline. A missing `--qa-result` in
+Stage 9 remains the designed "no prior gate yet" state (`VideoQA=None` → P15
+soft ERROR → REVIEW, exit 1, artifact written); a PRESENT but corrupt
+`--qa-result` exits 2 with nothing written.
 
-Before implementing, inspect:
-- the existing Stage-5/6 protocols and contracts: `agents/qa/script/`,
-  `agents/scene_planner/`, `docs/POLICY_REVIEW.md`, `docs/DATA_CONTRACTS.md` §§8–9;
+- New subprocess-level CLI tests: **+10** (Stage 8 +6, Stage 9 +4) asserting
+  exit codes, stderr content (no `Traceback`), and absence of partial
+  artifact/state on fatal paths.
+- Per-stage counts at HEAD: **Stage 8 = 80 tests, Stage 9 = 144 tests**
+  (Stage 8/9 suites jointly: 224).
+- **Full suite at HEAD (`ee4b7d9`): 1239 passed, 5 skipped**
+  (`python -m pytest tests -q`). `git diff --check` clean.
+- **Audit outcome:** 0 BUGs; **4 NON-BLOCKING concerns** (not bugs; recorded,
+  not being fixed):
+  1. Stage 9 treats a missing `--qa-result` as `VideoQA=None` → P15 REVIEW
+     rather than fatal (documented design).
+  2. Output-write failures (e.g. unwritable `--out`) are not caught and may
+     still surface an OSError traceback.
+  3. Stage 8 pairing errors print to stdout while other fatal errors print to
+     stderr (cosmetic asymmetry; pre-existing).
+  4. A few dedicated subprocess tests are missing (unreadable files, Stage-9
+     missing `--previous`, Stage-9 `{}` schema-invalid); the handling is
+     covered by shared code paths.
+- All Stage 8/9 changes **plus** `docs/AUDIT_QA_STAGES.md` are **COMMITTED** at
+  `ee4b7d9`; the working tree is **CLEAN**.
+
+### Next task / session checkpoint
+
+**CURRENT STATE:** Stages 8 and 9 are implemented, reviewed, and **committed** at
+`ee4b7d9`; the working tree is **clean** (nothing to stage or commit).
+
+**NEXT ACTION:** the Stage 8/9 checkpoint is committed and complete. Confirm the
+recorded state above, then await an explicit user instruction for the next piece
+of work. Do NOT automatically:
+
+- start Stage 10 (Human Approval) work — the existing implementation is complete
+  and was intentionally NOT touched;
+- implement Gemini providers for Stages 8 or 9 — both are deterministic gates by
+  design, with no LLM seam;
+- start Stage 11+ (YouTube publishing, analytics) work — intentionally out of
+  scope;
+- begin the **PLANNED but NOT STARTED** real-Gemini work without an explicit user
+  ask: Stage 6 Scene Planning (`agents/scene_planner/`). Stage 5 has no LLM seam
+  by design (see the Stage 5 completed-task note above), so it has no Gemini
+  variant planned.
+
+Before implementing anything later, inspect:
+- the existing protocols/contracts: `agents/scene_planner/`,
+  `docs/POLICY_REVIEW.md`, `docs/DATA_CONTRACTS.md` §§8–9;
 - `docs/GEMINI_PROVIDER_DESIGN.md` (per-stage adapter table §B, implemented
   slices §H/I/I₂/K/L).
-
-Expected components (mirroring the Stage-1/2/3/4 slices):
-- a factory + CLI opt-in per stage;
-- structured Gemini output (Pydantic schema gate in `providers/gemini/`);
-- typed error discipline (exit 2, no partial artifact, no raw SDK escapes);
-- offline tests (stubbed client, `socket.blocked`, no network/key) + one gated
-  real case (`GEMINI_INTEGRATION_TESTS=1`).
 
 ### How to continue
 
@@ -1370,8 +1422,9 @@ Expected components (mirroring the Stage-1/2/3/4 slices):
    `docs/FACT_VERIFICATION.md`, `docs/RESEARCH_PIPELINE.md`,
    `docs/MODEL_STRATEGY.md`.
 4. Confirm the test suite passes
-   (`python -m pytest tests -q` — expect **1229 passed, 5 skipped**).
-5. Continue with the single next task above (Gemini providers for Stages 5/6).
-   Stages 7–11 stay out of scope.
+   (`python -m pytest tests -q` — expect **1239 passed, 5 skipped**).
+5. Continue with the single next task above (confirm the committed Stage 8/9
+   checkpoint and await direction). Stages 10–11+ stay out of scope; Stages 8/9
+   get no Gemini.
 6. Do not redo completed stages unless a concrete bug is discovered.
 7. Do not rely on previous OpenCode conversation history.

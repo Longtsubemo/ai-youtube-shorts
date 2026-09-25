@@ -15,6 +15,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from agents.human_approval.__main__ import _atomic_write_pair
+
 import pytest
 
 from agents.human_approval.models import Approver, HumanApprovalError
@@ -23,6 +25,7 @@ from agents.human_approval.stage import (
     approval_inputs_from_paths,
     load_approval_result,
     load_committed_fixtures,
+    load_policy_result,
     run_human_approval,
 )
 from human_approval_test_utils import (
@@ -112,6 +115,18 @@ class TestLoaders:
         )
         assert inputs.script_qa is None
         assert inputs.fact_check is None
+
+    def test_duplicate_json_keys_are_rejected(self, tmp_path):
+        source = _fixture("policy_qa_result.json").read_text(encoding="utf-8")
+        duplicate = source.replace(
+            '"run_id": "mock",',
+            '"run_id": "mock",\n  "run_id": "mock",',
+            1,
+        )
+        path = tmp_path / "duplicate.json"
+        path.write_text(duplicate, encoding="utf-8")
+        with pytest.raises(HumanApprovalError, match="duplicate JSON key"):
+            load_policy_result(path)
 
     def test_committed_policy_fixture_is_still_consistent(self):
         from agents.qa.policy.stage import load_committed_fixtures as load_policy_fixtures
@@ -348,7 +363,7 @@ class TestCli:
                 "--approver-id",
                 "alice",
                 "--override",
-                "video_qa;Q-PROVIDER_SUBJECT;REVIEW;accepted the disclosure warning",
+                "video_qa;provider_isolation;REVIEW;accepted the disclosure warning",
                 "--qa-result",
                 str(review_path),
             ),
@@ -361,6 +376,79 @@ class TestCli:
     def test_missing_decision_is_error(self, tmp_path):
         proc = _run_cli(tmp_path, ("--approver-id", "alice"))
         assert proc.returncode == 2
+
+    def test_unsafe_run_id_is_rejected_before_writing(self, tmp_path):
+        proc = _run_cli(
+            tmp_path,
+            ("--run-id", "../escape", "--decision", "APPROVED", "--approver-id", "alice"),
+        )
+        assert proc.returncode == 2
+        assert not _approval_file(tmp_path).exists()
+        assert not (tmp_path.parent / "escape").exists()
+
+    def test_malformed_approval_payload_is_rejected(self, tmp_path):
+        approved = _run_cli(
+            tmp_path,
+            ("--decision", "APPROVED", "--approver-id", "alice"),
+        )
+        assert approved.returncode == 0, approved.stdout
+        path = _approval_file(tmp_path)
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["data"]["provenance"] = None
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        with pytest.raises(HumanApprovalError, match="provenance"):
+            load_approval_result(path)
+
+    def test_atomic_write_rolls_back_both_files(self, tmp_path, monkeypatch):
+        artifact_path = tmp_path / "artifact.json"
+        state_path = tmp_path / "state.json"
+        artifact_path.write_text("old artifact", encoding="utf-8")
+        state_path.write_text("old state", encoding="utf-8")
+        import agents.human_approval.__main__ as human_cli
+
+        real_replace = human_cli.os.replace
+        failed = False
+
+        def flaky_replace(source, destination):
+            nonlocal failed
+            if not failed and Path(destination) == state_path:
+                failed = True
+                raise OSError("simulated state replacement failure")
+            return real_replace(source, destination)
+
+        monkeypatch.setattr(human_cli.os, "replace", flaky_replace)
+        with pytest.raises(OSError, match="simulated"):
+            _atomic_write_pair(
+                artifact_path,
+                "new artifact",
+                state_path,
+                "new state",
+            )
+        assert artifact_path.read_text(encoding="utf-8") == "old artifact"
+        assert state_path.read_text(encoding="utf-8") == "old state"
+        assert not list(tmp_path.glob(".*.tmp"))
+
+    def test_atomic_write_cleans_temp_when_state_temp_creation_fails(self, tmp_path, monkeypatch):
+        artifact_path = tmp_path / "artifact.json"
+        state_path = tmp_path / "state.json"
+        import agents.human_approval.__main__ as human_cli
+
+        real_temporary_path = human_cli._temporary_path
+        calls = 0
+
+        def failing_temporary_path(path):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError("simulated state temp failure")
+            return real_temporary_path(path)
+
+        monkeypatch.setattr(human_cli, "_temporary_path", failing_temporary_path)
+        with pytest.raises(OSError, match="simulated"):
+            _atomic_write_pair(artifact_path, "artifact", state_path, "state")
+        assert not list(tmp_path.glob(".*.tmp"))
+        assert not artifact_path.exists()
+        assert not state_path.exists()
 
     def test_pending_is_not_writable(self, tmp_path):
         proc = _run_cli(tmp_path, ("--decision", "PENDING", "--approver-id", "alice"))

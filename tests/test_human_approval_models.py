@@ -47,6 +47,14 @@ class TestIds:
         assert base != human_approval_id_for("run-2", "pp_a")
         assert base != human_approval_id_for("run-1", "pp_b")
 
+    def test_id_rejects_path_unsafe_run_id(self):
+        with pytest.raises(HumanApprovalError, match="run_id"):
+            human_approval_id_for("../escape", "pp_a")
+
+    def test_id_rejects_empty_target(self):
+        with pytest.raises(HumanApprovalError, match="target_ref"):
+            human_approval_id_for("run-1", "")
+
     def test_record_uses_stable_id(self):
         result = healthy_approval(run_id="mock")
         assert result.approval_id == human_approval_id_for("mock", result.target_ref)
@@ -95,6 +103,10 @@ class TestReviewedArtifact:
     def test_bad_digest_rejected(self):
         with pytest.raises(HumanApprovalError, match="content_sha256"):
             ReviewedArtifact(role="script", artifact_id="sc_x", content_sha256="zz").validate()
+
+    def test_non_text_role_is_rejected_cleanly(self):
+        with pytest.raises(HumanApprovalError, match="unknown reviewed-artifact role"):
+            ReviewedArtifact(role=[], artifact_id="sc_x", content_sha256="a" * 64).validate()
 
     def test_wrong_schema_for_role_rejected(self):
         with pytest.raises(HumanApprovalError, match="does not match role"):
@@ -172,6 +184,10 @@ class TestManualUploadReadiness:
 
 
 class TestResultEnvelope:
+    def test_config_rejects_non_text_role_cleanly(self):
+        with pytest.raises(HumanApprovalError, match="known role names"):
+            HumanApprovalConfig(required_roles=([],)).validate()
+
     def test_healthy_approval_round_trip_json(self):
         result = healthy_approval(
             decision="APPROVED",
@@ -247,3 +263,42 @@ class TestResultEnvelope:
         )
         with pytest.raises(HumanApprovalError, match="supersede itself"):
             broken.validate()
+
+    def test_result_requires_complete_condition_set(self):
+        import dataclasses
+
+        result = healthy_approval()
+        broken = dataclasses.replace(
+            result,
+            blocking_conditions=result.blocking_conditions[:1],
+        )
+        with pytest.raises(HumanApprovalError, match="complete gate set"):
+            broken.validate()
+
+    def test_result_rejects_tampered_approval_id(self):
+        import dataclasses
+
+        result = healthy_approval()
+        broken = dataclasses.replace(result, approval_id="ha_" + "0" * 12)
+        with pytest.raises(HumanApprovalError, match="does not match"):
+            broken.validate()
+
+    def test_result_rejects_tampered_manual_package(self):
+        import dataclasses
+
+        result = healthy_approval()
+        broken = dataclasses.replace(
+            result,
+            manual_upload=dataclasses.replace(
+                result.manual_upload,
+                artifacts=(result.manual_upload.artifacts[0],),
+            ),
+        )
+        with pytest.raises(HumanApprovalError, match="manual_upload.artifacts"):
+            broken.validate()
+
+    def test_malformed_provenance_is_wrapped(self):
+        payload = healthy_approval().to_dict()
+        payload["data"]["provenance"] = None
+        with pytest.raises(HumanApprovalError, match="provenance must be a mapping"):
+            HumanApprovalResult.from_dict(payload)

@@ -31,6 +31,7 @@ from agents.human_approval.validator import (
     check_approval_freshness,
     evaluate_human_approval,
     is_superseded_by,
+    validate_approval_inputs,
 )
 from human_approval_test_utils import (
     GENESIS,
@@ -66,6 +67,69 @@ class TestBlockingConditions:
         first = build_blocking_conditions(inputs, config, (), "APPROVED")
         second = build_blocking_conditions(inputs, config, (), "APPROVED")
         assert [c.to_dict() for c in first] == [c.to_dict() for c in second]
+
+
+class TestInputIntegrity:
+    def test_unsafe_upstream_run_id_is_rejected(self):
+        import dataclasses
+
+        inputs = build_inputs(
+            policy_qa=dataclasses.replace(
+                build_inputs().policy_qa, run_id="../escape"
+            )
+        )
+        with pytest.raises(HumanApprovalError, match="run_id"):
+            validate_approval_inputs(inputs)
+
+    def test_wrong_upstream_schema_is_rejected(self):
+        import dataclasses
+
+        inputs = build_inputs(
+            policy_qa=dataclasses.replace(build_inputs().policy_qa, schema="Unknown")
+        )
+        with pytest.raises(HumanApprovalError, match="schema"):
+            validate_approval_inputs(inputs)
+
+    def test_nondeterministic_artifact_id_is_rejected(self):
+        import dataclasses
+
+        inputs = build_inputs(
+            policy_qa=dataclasses.replace(
+                build_inputs().policy_qa, policy_result_id="pr_wrong"
+            )
+        )
+        with pytest.raises(HumanApprovalError, match="deterministic id"):
+            validate_approval_inputs(inputs)
+
+    def test_review_record_without_issue_is_not_overrideable(self):
+        import dataclasses
+
+        review = video_qa_verdict("REVIEW")
+        malformed = dataclasses.replace(review, issues=(), warnings=(), infos=())
+        inputs = build_inputs(video_qa=malformed)
+        with pytest.raises(HumanApprovalError, match="inconsistent|concrete finding"):
+            healthy_approval(
+                decision="APPROVED",
+                inputs=inputs,
+                overrides=(
+                    OverriddenVerdict(
+                        gate="video_qa",
+                        check_id="provider_isolation",
+                        verdict="REVIEW",
+                        justification="not backed by an issue",
+                    ),
+                ),
+            )
+
+    def test_effective_rejects_tampered_prior_verdict_record(self):
+        import dataclasses
+
+        result = healthy_approval()
+        tampered = dataclasses.replace(
+            result,
+            prior_gate_verdicts={**result.prior_gate_verdicts, "policy_qa": "REVIEW"},
+        )
+        assert approval_is_effective(tampered, artifact_map(build_inputs())) is False
 
 
 class TestHardGatesBlockApproved:
@@ -218,7 +282,7 @@ class TestSoftReviewOverrides:
     def test_video_review_with_override_approves_and_binds_version(self):
         override = OverriddenVerdict(
             gate="video_qa",
-            check_id="Q-PROVIDER_SUBJECT",
+            check_id="provider_isolation",
             verdict="REVIEW",
             justification="the disclosure warning was reviewed and accepted",
         )
@@ -232,7 +296,7 @@ class TestSoftReviewOverrides:
 
     def test_both_reviews_need_both_overrides(self):
         policy_override = OverriddenVerdict(
-            gate="policy_qa", justification="accepted"
+            gate="policy_qa", check_id="P15", justification="accepted"
         )
         with pytest.raises(HumanApprovalError, match="review_overrides"):
             healthy_approval(

@@ -23,6 +23,8 @@ from agents.human_approval.models import (
     OverriddenVerdict,
     RequestedChange,
 )
+from agents.qa.policy.models import PolicyIssue
+from agents.qa.video.models import VideoQAIssue
 from agents.human_approval.validator import evaluate_human_approval
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -114,15 +116,116 @@ def _replace(obj, **changes):
 
 
 def policy_verdict(verdict: str):
-    return _replace(committed_inputs().policy_qa, overall_verdict=verdict)
+    result = committed_inputs().policy_qa
+    if verdict == result.overall_verdict:
+        return result
+    if verdict not in ("PASS", "REVIEW", "REJECT"):
+        raise ValueError(f"unsupported policy verdict: {verdict}")
+    check_id = "P15"
+    check = next(record for record in result.checks if record.check_id == check_id)
+    gate = "hard" if verdict == "REJECT" else "soft"
+    issue = PolicyIssue(
+        issue_id=f"test-policy-{verdict.lower()}",
+        check_id=check_id,
+        category=check.category,
+        severity="ERROR",
+        gate=gate,
+        message=f"deterministic {verdict.lower()} test finding",
+        rationale="Synthetic test defect for Stage-10 gate coverage",
+        policy_rule="test-only",
+    ).validate()
+    checks = tuple(
+        _replace(
+            record,
+            errors=record.errors + 1,
+            hard_errors=record.hard_errors + (1 if gate == "hard" else 0),
+        )
+        if record.check_id == check_id
+        else record
+        for record in result.checks
+    )
+    risk_summary = result.risk_summary
+    if risk_summary is not None:
+        risk_summary = _replace(
+            risk_summary,
+            verdict=verdict,
+            error_count=risk_summary.error_count + 1,
+            highest_risk_severity="ERROR",
+            flagged_categories=tuple(
+                dict.fromkeys((*risk_summary.flagged_categories, check.category))
+            ),
+        )
+    return _replace(
+        result,
+        overall_verdict=verdict,
+        checks=checks,
+        issues=(*result.issues, issue),
+        risk_summary=risk_summary,
+    )
 
 
 def video_qa_verdict(verdict: str):
-    return _replace(committed_inputs().video_qa, overall_verdict=verdict)
+    result = committed_inputs().video_qa
+    if verdict == result.overall_verdict:
+        return result
+    if verdict not in ("PASS", "REVIEW", "REJECT"):
+        raise ValueError(f"unsupported video QA verdict: {verdict}")
+    check_id = "provider_isolation"
+    check = next(record for record in result.checks if record.check == check_id)
+    gate = "hard" if verdict == "REJECT" else "soft"
+    issue = VideoQAIssue(
+        issue_id=f"test-video-{verdict.lower()}",
+        category=check.category,
+        severity="ERROR",
+        message=f"deterministic {verdict.lower()} test finding",
+        gate=gate,
+        check=check_id,
+    ).validate()
+    checks = tuple(
+        _replace(
+            record,
+            errors=record.errors + 1,
+            hard_errors=record.hard_errors + (1 if gate == "hard" else 0),
+        )
+        if record.check == check_id
+        else record
+        for record in result.checks
+    )
+    return _replace(
+        result,
+        overall_verdict=verdict,
+        checks=checks,
+        issues=(*result.issues, issue),
+    )
 
 
 def video_result_status(status: str):
-    return _replace(committed_inputs().video_result, overall_status=status)
+    result = committed_inputs().video_result
+    if status == "failed":
+        rows = tuple(
+            _replace(
+                row,
+                status="failed",
+                artifact=None,
+                failure="deterministic failed test result",
+                failure_retryable=True,
+            )
+            for row in result.scenes
+        )
+        return _replace(result, scenes=rows, overall_status=status)
+    if status == "pending":
+        rows = list(result.scenes)
+        rows[0] = _replace(
+            rows[0],
+            status="pending",
+            artifact=None,
+            failure="",
+            failure_retryable=None,
+        )
+        return _replace(result, scenes=tuple(rows), overall_status=status)
+    if status == "completed":
+        return result
+    raise ValueError(f"unsupported video result status: {status}")
 
 
 def script_qa_verdict(verdict: str):
@@ -177,7 +280,9 @@ def healthy_approval(
 
 def policy_result_dict(**changes) -> dict:
     """Serializable Stage-9 PolicyQAResult for CLI scenario tests (clean)."""
-    policy = committed_inputs().policy_qa
+    changes = dict(changes)
+    verdict = changes.pop("overall_verdict", None)
+    policy = policy_verdict(verdict) if verdict is not None else committed_inputs().policy_qa
     if changes:
         policy = _replace(policy, **changes)
     return policy.to_dict()
@@ -185,7 +290,9 @@ def policy_result_dict(**changes) -> dict:
 
 def qa_result_dict(**changes) -> dict:
     """Serializable Stage-8 VideoQAResult for CLI scenario tests (clean)."""
-    qa = committed_inputs().video_qa
+    changes = dict(changes)
+    verdict = changes.pop("overall_verdict", None)
+    qa = video_qa_verdict(verdict) if verdict is not None else committed_inputs().video_qa
     if changes:
         qa = _replace(qa, **changes)
     return qa.to_dict()

@@ -32,13 +32,14 @@ Usage:
     python -m agents.human_approval --check \
         --approval data/<run_id>/approval/human_approval_result.json
 
-Loads the full QA'd chain (Stage-3 Script, Stage-5 FactCheckResult +
+Loads the full QA'd chain (Stage-4 Script, Stage-5 FactCheckResult +
 ScriptQAResult, Stage-6 ProductionPlan, Stage-7 VideoGenerationResult,
 Stage-8 VideoQAResult, Stage-9 PolicyQAResult), verifies the bundle is
 coherent and complete, evaluates the deterministic hard gates for APPROVED,
-and writes a HumanApprovalResult artifact (plus run state advanced to the
-existing generic Stage.PUBLISH) under
-data/<run_id>/approval/human_approval_result.json.
+and writes a HumanApprovalResult artifact under
+data/<run_id>/approval/human_approval_result.json. Approved decisions advance
+run bookkeeping to Stage.PUBLISH; non-approved decisions remain at
+Stage.QUALITY_CHECK.
 
 Stage note: Stage 10 is HUMAN APPROVAL, a gate -- it does NOT implement
 Stage 11 (YouTube upload/scheduling). Approving marks the reviewed bundle as
@@ -54,7 +55,8 @@ hard gate).
 from __future__ import annotations
 
 import argparse
-import uuid
+import os
+import tempfile
 from pathlib import Path
 
 from agents.human_approval.models import (
@@ -65,6 +67,8 @@ from agents.human_approval.models import (
     OverriddenVerdict,
     RequestedChange,
     WRITABLE_DECISIONS,
+    human_approval_id_for,
+    validate_run_id,
 )
 from agents.human_approval.stage import (
     DEFAULT_APPROVAL_RESULT_NAME,
@@ -82,6 +86,7 @@ from agents.human_approval.stage import (
 from agents.human_approval.validator import (
     approval_is_effective,
     check_approval_freshness,
+    validate_approval_inputs,
 )
 from pipeline.state import PipelineState, Stage
 
@@ -113,6 +118,81 @@ def _parse_override(value: str) -> OverriddenVerdict:
         decision="APPROVED",
         justification=justification,
     )
+
+
+def _optional_path(value: Path | None) -> Path | None:
+    if value is None or str(value).lower() in ("", "none"):
+        return None
+    return value
+
+
+def _load_cli_inputs(args) -> tuple[object, str]:
+    inputs = approval_inputs_from_paths(
+        policy_result_path=args.policy_result,
+        video_qa_path=args.qa_result,
+        video_result_path=args.video_result,
+        plan_path=args.plan,
+        script_path=args.script,
+        script_qa_path=_optional_path(args.script_qa),
+        fact_check_path=_optional_path(args.fact_check),
+    )
+    source_run_id = validate_approval_inputs(inputs)
+    return inputs, source_run_id
+
+
+def _temporary_path(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=str(path.parent),
+    )
+    os.close(descriptor)
+    return Path(name)
+
+
+def _restore_file(path: Path, original: bytes | None) -> None:
+    if original is None:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+        return
+    temporary = _temporary_path(path)
+    try:
+        temporary.write_bytes(original)
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def _atomic_write_pair(
+    artifact_path: Path,
+    artifact_text: str,
+    state_path: Path,
+    state_text: str,
+) -> None:
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    old_artifact = artifact_path.read_bytes() if artifact_path.exists() else None
+    old_state = state_path.read_bytes() if state_path.exists() else None
+    artifact_tmp: Path | None = None
+    state_tmp: Path | None = None
+    try:
+        artifact_tmp = _temporary_path(artifact_path)
+        state_tmp = _temporary_path(state_path)
+        artifact_tmp.write_text(artifact_text, encoding="utf-8")
+        state_tmp.write_text(state_text, encoding="utf-8")
+        os.replace(artifact_tmp, artifact_path)
+        os.replace(state_tmp, state_path)
+    except OSError:
+        for temporary in (artifact_tmp, state_tmp):
+            if temporary is not None and temporary.exists():
+                temporary.unlink()
+        _restore_file(artifact_path, old_artifact)
+        _restore_file(state_path, old_state)
+        raise
 
 
 def main() -> int:
@@ -152,7 +232,7 @@ def main() -> int:
         "--script",
         type=Path,
         default=DEFAULT_SCRIPT_PATH,
-        help="Stage-3 Script JSON (default: data/mock/script.json)",
+        help="Stage-4 Script JSON (default: data/mock/script.json)",
     )
     parser.add_argument(
         "--script-qa",
@@ -200,7 +280,10 @@ def main() -> int:
     parser.add_argument(
         "--run-id",
         default=None,
-        help="run id (default: 'ha-demo' for the mock fixtures, else a generated id)",
+        help=(
+            "approval run id (default: the common run_id in the input bundle); "
+            "must be path-safe"
+        ),
     )
     parser.add_argument(
         "--out",
@@ -236,6 +319,13 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    if args.run_id is not None:
+        try:
+            validate_run_id(args.run_id)
+        except HumanApprovalError as exc:
+            print(f"[human_approval] error: {exc}")
+            return 2
+
     core_paths = (
         ("PolicyQAResult", args.policy_result),
         ("VideoQAResult", args.qa_result),
@@ -248,8 +338,8 @@ def main() -> int:
             print(f"[human_approval] {name} not found: {path}")
             return 2
 
-    script_qa_path = None if str(args.script_qa).lower() in ("", "none") else args.script_qa
-    fact_check_path = None if str(args.fact_check).lower() in ("", "none") else args.fact_check
+    script_qa_path = _optional_path(args.script_qa)
+    fact_check_path = _optional_path(args.fact_check)
     if script_qa_path is not None and not script_qa_path.is_file():
         print(f"[human_approval] ScriptQAResult not found: {script_qa_path}")
         return 2
@@ -257,29 +347,44 @@ def main() -> int:
         print(f"[human_approval] FactCheckResult not found: {fact_check_path}")
         return 2
 
-    # ---------------- audit mode ------------------------------------------ #
     if args.check:
         if args.approval is None:
             print("[human_approval] --check requires --approval <path>")
+            return 2
+        if any(
+            (
+                args.decision is not None,
+                args.approver_id is not None,
+                bool(args.changes),
+                bool(args.overrides),
+                args.previous is not None,
+            )
+        ):
+            print("[human_approval] --check cannot be combined with decision options")
             return 2
         if not args.approval.is_file():
             print(f"[human_approval] approval not found: {args.approval}")
             return 2
         try:
             approval = load_approval_result(args.approval)
-            inputs = approval_inputs_from_paths(
-                policy_result_path=args.policy_result,
-                video_qa_path=args.qa_result,
-                video_result_path=args.video_result,
-                plan_path=args.plan,
-                script_path=args.script,
-                script_qa_path=script_qa_path,
-                fact_check_path=fact_check_path,
-            )
+            if args.run_id is not None and approval.run_id != args.run_id:
+                raise HumanApprovalError(
+                    f"approval run_id {approval.run_id!r} does not match --run-id "
+                    f"{args.run_id!r}"
+                )
+            inputs, _ = _load_cli_inputs(args)
+            current_plan = inputs.plan
+            if current_plan is None:
+                raise HumanApprovalError("current production plan is required for --check")
+            if approval.target_ref != current_plan.production_plan_id:
+                raise HumanApprovalError(
+                    f"approval target {approval.target_ref} does not match current "
+                    f"plan {current_plan.production_plan_id}"
+                )
             current = _current_artifacts(inputs)
             fresh = check_approval_freshness(approval, current)
             effective = approval_is_effective(approval, current)
-        except HumanApprovalError as exc:
+        except (HumanApprovalError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
             print(f"[human_approval] error: {exc}")
             return 2
         print(f"[human_approval] approval_id={approval.approval_id}")
@@ -289,7 +394,9 @@ def main() -> int:
         print(f"[human_approval] effective={'yes' if effective else 'NO'}")
         return 0 if effective else 1
 
-    # ---------------- decision mode --------------------------------------- #
+    if args.approval is not None:
+        print("[human_approval] --approval is only valid with --check")
+        return 2
     if args.decision is None:
         print(
             "[human_approval] --decision is required "
@@ -306,47 +413,35 @@ def main() -> int:
         print("[human_approval] --approver-id is required")
         return 2
 
-    previous = None
-    if args.previous is not None:
-        if not args.previous.is_file():
-            print(f"[human_approval] previous approval not found: {args.previous}")
-            return 2
-        previous = load_approval_result(args.previous)
-
     try:
         overrides = tuple(_parse_override(value) for value in args.overrides)
         changes = tuple(
             RequestedChange(requirement=value).validate() for value in args.changes
         )
-    except (ValueError, HumanApprovalError) as exc:
-        print(f"[human_approval] error: {exc}")
-        return 2
-
-    if args.run_id:
-        run_id = args.run_id
-    elif all(
-        (
-            args.policy_result == DEFAULT_POLICY_RESULT_PATH,
-            args.qa_result == DEFAULT_QA_RESULT_PATH,
-            args.video_result == DEFAULT_VIDEO_RESULT_PATH,
-            args.plan == DEFAULT_PRODUCTION_PLAN_PATH,
-            args.script == DEFAULT_SCRIPT_PATH,
-        )
-    ):
-        run_id = "ha-demo"
-    else:
-        run_id = uuid.uuid4().hex[:12]
-
-    try:
-        inputs = approval_inputs_from_paths(
-            policy_result_path=args.policy_result,
-            video_qa_path=args.qa_result,
-            video_result_path=args.video_result,
-            plan_path=args.plan,
-            script_path=args.script,
-            script_qa_path=script_qa_path,
-            fact_check_path=fact_check_path,
-        )
+        inputs, source_run_id = _load_cli_inputs(args)
+        run_id = validate_run_id(args.run_id or source_run_id)
+        previous = None
+        if args.previous is not None:
+            if not args.previous.is_file():
+                raise HumanApprovalError(
+                    f"previous approval not found: {args.previous}"
+                )
+            previous = load_approval_result(args.previous)
+            current_plan = inputs.plan
+            if current_plan is None:
+                raise HumanApprovalError("current production plan is required for --previous")
+            if previous.target_ref != current_plan.production_plan_id:
+                raise HumanApprovalError(
+                    f"previous approval target {previous.target_ref} does not match "
+                    f"current plan {current_plan.production_plan_id}"
+                )
+            if previous.approval_id == human_approval_id_for(
+                run_id, current_plan.production_plan_id
+            ):
+                raise HumanApprovalError(
+                    "re-review of the same approval slot must omit --previous; "
+                    "an approval cannot supersede itself"
+                )
         approval = run_human_approval(
             inputs,
             config=HumanApprovalConfig(),
@@ -360,26 +455,37 @@ def main() -> int:
             supersedes_approval_id=previous.approval_id if previous is not None else "",
             run_id=run_id,
         )
-    except HumanApprovalError as exc:
+    except (HumanApprovalError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
         print(f"[human_approval] error: {exc}")
         return 2
 
-    out_root = args.out or Path("data")
-    out_path = out_root / run_id / "approval" / DEFAULT_APPROVAL_RESULT_NAME
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(approval.to_json(), encoding="utf-8")
-
-    state_path = out_root / run_id / "state.json"
     try:
-        state = PipelineState.load(state_path)
-    except FileNotFoundError:
-        state = PipelineState(run_id=run_id)
-    # Numbered Stage 10 (Human Approval) maps to the existing generic publish
-    # stage as a bookkeeping marker ("approved for manual upload"). No new
-    # Stage enum member exists and none was added (see models.py).
-    state.advance_to(Stage.PUBLISH)
-    state.add_artifact(Stage.PUBLISH, out_path)
-    state.save(state_path)
+        out_root = args.out or Path("data")
+        out_path = out_root / run_id / "approval" / DEFAULT_APPROVAL_RESULT_NAME
+        state_path = out_root / run_id / "state.json"
+        try:
+            state = PipelineState.load(state_path)
+        except FileNotFoundError:
+            state = PipelineState(run_id=run_id)
+        if state.run_id != run_id:
+            raise HumanApprovalError(
+                f"state run_id {state.run_id!r} does not match approval run {run_id!r}"
+            )
+        registry_stage = Stage.PUBLISH if approval.is_approved else Stage.QUALITY_CHECK
+        state.advance_to(registry_stage)
+        state.artifacts.setdefault(registry_stage.value, [])
+        artifact_ref = str(out_path)
+        if artifact_ref not in state.artifacts[registry_stage.value]:
+            state.artifacts[registry_stage.value].append(artifact_ref)
+        _atomic_write_pair(
+            out_path,
+            approval.to_json(),
+            state_path,
+            state.to_json(),
+        )
+    except (HumanApprovalError, OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+        print(f"[human_approval] error: {exc}")
+        return 2
 
     _print_report(approval, chained=previous is not None)
     print(f"[human_approval] artifact written to {out_path}")

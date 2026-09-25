@@ -35,8 +35,9 @@ Every artifact is a JSON object with a contract header:
   MAPPINGS to the existing enum, not new enum members — e.g. `stage="video"`
   and `stage="policy_qa"` advance pipeline state to the generic
   `Stage.QUALITY_CHECK`. Stage 10's `HumanApprovalResult` header label
-  `stage="human_approval"` similarly maps to the existing generic
-  `Stage.PUBLISH` (§12) — no new enum member is added.
+  `stage="human_approval"` maps approved decisions to the existing generic
+  `Stage.PUBLISH` and non-approved decisions to `Stage.QUALITY_CHECK` (§12) —
+  no new enum member is added.
 
 Examples below show the `data` portion only (header elided).
 
@@ -959,8 +960,9 @@ ProductionPlan → VideoGenerationResult → VideoQAResult:
   to `Stage.QUALITY_CHECK`; exit 0 PASS, 1 REVIEW/REJECT, 2 error;
   `--previous` chains `resumed_from_policy_result_id`).
 - **Honesty:** the gate is deterministic and NOT a YouTube/platform compliance
-  guarantee (`POLICY_RULESET_NOTE` says exactly this); human approval (Stage 10)
-  and publishing (Stage 11) remain later stages this contract never implements.
+  guarantee (`POLICY_RULESET_NOTE` says exactly this); human approval is
+  specified separately in §12, while publishing (Stage 11) remains later and
+  out of scope.
 
 ## 12. HumanApprovalResult (Stage 10)
 
@@ -981,32 +983,39 @@ uploaded. Written to `data/<run_id>/approval/human_approval_result.json`.
   "data": {
     "approval_id": "ha_<sha1(run_id:target_ref)[:12]>",
     "target_ref": "pp_e99181e73b5d",
-    "topic_id": "t_octopus_hearts",
-    "topic_title": "Why octopuses have three hearts",
     "decision": "APPROVED",
+    "decision_at": "2026-09-20T12:00:00.000000+00:00",
     "approver": {"approver_id": "alice", "role": "reviewer"},
     "reviewed_artifacts": [
-      {"role": "policy_qa", "artifact_id": "pr_9b7d098451d3", "content_sha256": "<sha256 hex>", "bind": {"bound": true}},
-      {"role": "video_qa", "artifact_id": "qa_9b7d098451d3", "content_sha256": "<sha256 hex>", "bind": {"bound": true}},
-      {"role": "video_result", "artifact_id": "vg_9b7d098451d3", "content_sha256": "<sha256 hex>", "bind": {"bound": true}},
-      {"role": "production_plan", "artifact_id": "pp_e99181e73b5d", "content_sha256": "<sha256 hex>", "bind": {"bound": true}},
-      {"role": "script", "artifact_id": "sc_9fc41d7a46b7", "content_sha256": "<sha256 hex>", "bind": {"bound": true}},
-      {"role": "script_qa", "artifact_id": "sqa_e99181e73b5d", "content_sha256": "<sha256 hex>", "bind": {"bound": true}},
-      {"role": "fact_check", "artifact_id": "fc_41e052643b3a", "content_sha256": "<sha256 hex>", "bind": {"bound": true}}
+      {"role": "policy_qa", "artifact_id": "pr_9b7d098451d3", "content_sha256": "<sha256 hex>", "schema": "PolicyQAResult"},
+      {"role": "video_qa", "artifact_id": "qa_9b7d098451d3", "content_sha256": "<sha256 hex>", "schema": "VideoQAResult"},
+      {"role": "video_result", "artifact_id": "vg_9b7d098451d3", "content_sha256": "<sha256 hex>", "schema": "VideoGenerationResult"},
+      {"role": "production_plan", "artifact_id": "pp_e99181e73b5d", "content_sha256": "<sha256 hex>", "schema": "ProductionPlan"},
+      {"role": "script", "artifact_id": "sc_9fc41d7a46b7", "content_sha256": "<sha256 hex>", "schema": "Script"},
+      {"role": "script_qa", "artifact_id": "sqa_e99181e73b5d", "content_sha256": "<sha256 hex>", "schema": "ScriptQAResult"},
+      {"role": "fact_check", "artifact_id": "fc_41e052643b3a", "content_sha256": "<sha256 hex>", "schema": "FactCheckResult"}
     ],
     "blocking_conditions": [
-      {"code": "required_artifacts", "satisfied": true},
-      {"code": "policy_qa_hard_reject", "satisfied": true},
-      {"code": "video_qa_hard_reject", "satisfied": true},
-      {"code": "video_generation_completed", "satisfied": true},
-      {"code": "review_overrides", "satisfied": true}
+      {"code": "required_artifacts", "satisfied": true, "detail": "required roles present"},
+      {"code": "policy_qa_hard_reject", "satisfied": true, "detail": "PASS"},
+      {"code": "video_qa_hard_reject", "satisfied": true, "detail": "PASS"},
+      {"code": "video_generation_completed", "satisfied": true, "detail": "completed"},
+      {"code": "review_overrides", "satisfied": true, "detail": "no unresolved soft REVIEW findings"}
     ],
+    "prior_gate_verdicts": {
+      "policy_qa": "PASS",
+      "video_qa": "PASS",
+      "video_generation": "completed",
+      "script_qa": "PASS"
+    },
     "overridden_verdicts": [],
     "changes_requested": [],
     "notes": "ready",
     "manual_upload": {
       "ready": true,
-      "note": "Metadata, disclosure labels, and a manual upload remain human steps. Approval does NOT perform or schedule any upload.",
+      "required": true,
+      "note": "No automated upload is implemented. Endpoint is a manual upload only.",
+      "artifacts": ["pr_9b7d098451d3", "qa_9b7d098451d3", "vg_9b7d098451d3", "pp_e99181e73b5d", "sc_9fc41d7a46b7", "sqa_e99181e73b5d", "fc_41e052643b3a"],
       "title": "Why octopuses have three hearts"
     },
     "supersedes_approval_id": "",
@@ -1045,15 +1054,15 @@ uploaded. Written to `data/<run_id>/approval/human_approval_result.json`.
   for `APPROVED`.
 - **Blocking conditions (codes):** `required_artifacts`,
   `policy_qa_hard_reject`, `video_qa_hard_reject`, `video_generation_completed`,
-  `review_overrides`. `APPROVED` requires ALL satisfied (else
-  `HumanApprovalError`, nothing written); `CHANGES_REQUESTED`/`REJECTED` are
-  valid under any state and RECORD the unsatisfied conditions for audit.
-  `CHANGES_REQUESTED` additionally requires `changes_requested` or `notes`;
-  `reason` for REJECTED is optional.
+  `review_overrides`. Every result records the complete set. `APPROVED` requires
+  ALL satisfied (else `HumanApprovalError`, nothing written);
+  `CHANGES_REQUESTED`/`REJECTED` are valid under any state and record the
+  evaluated conditions for audit. `CHANGES_REQUESTED` additionally requires
+  `changes_requested` or a non-empty `notes` field.
 - **Overrides:** only for the `policy_qa` / `video_qa` gates; only when the
-  prior verdict is a soft `REVIEW` (hard REJECT is never overrideable); each
-  override is auto-bound to the `artifact_id` of the reviewed artifact and
-  validated as an accepted `BooleanOperand` that flips the gate to satisfied.
+  prior verdict is a soft `REVIEW` with a concrete issue/finding (hard REJECT is
+  never overrideable); each override records the finding/check, prior verdict,
+  justification, decision, and the exact `artifact_id` it resolves.
 - **Digests (staleness / supersede):** `content_sha256` = canonical SHA-256
   of `json.dumps(artifact, sort_keys=True, separators={",", ":"})` over the
   artifact's `to_dict()` payload. `check_approval_freshness(approval,
@@ -1067,22 +1076,27 @@ uploaded. Written to `data/<run_id>/approval/human_approval_result.json`.
   envelope `produced_by.provider`/`model` and `provenance.provider`/`model`
   are all `null`, `provenance.generated_by = "human_approval_gate_v1"`,
   `provenance.source = "HumanReviewer"`, `prompt_version = "human_approval.v1"`.
-- **Manual upload endpoint:** `manual_upload.ready` (`True` ⇔
-  `is_approved`), `manual_upload.title` = the Stage-4 `Script` title, plus a
-  human note that metadata/upload remain manual. Stage 10 contains NO
-  YouTube/network/oauth code (safety suite enforces this).
+- **Manual upload endpoint:** `manual_upload.ready` is true only for an
+  `APPROVED`, gates-cleared result; `required` is always true;
+  `artifacts` exactly matches the reviewed artifact ids, and `title` is the
+  Stage-4 `Script` title. The note states that no automated upload is
+  implemented. Stage 10 contains NO YouTube/network/oauth code (safety suite
+  enforces this).
 - **Stage label vs. pipeline state:** the artifact header `stage` is
-  `"human_approval"` (§1). Numbered Stage 10 advances pipeline STATE to the
-  existing generic `Stage.PUBLISH` (`STATE_STAGE` constant) — no new `Stage`
-  enum member was added; Stage 10 performs no upload.
+  `"human_approval"` (§1). An approved decision advances pipeline bookkeeping
+  to the existing generic `Stage.PUBLISH`; non-approved decisions remain at
+  `Stage.QUALITY_CHECK`. No new `Stage` enum member was added; Stage 10
+  performs no upload.
 - CLI: `python -m agents.human_approval` (defaults to the committed
   `data/mock/*` fixtures; `--run-id`, `--decision`, `--approver-id`,
   `--notes`, `--change` repeatable, `--override "gate;check;verdict;justification"`,
   `--script-qa`/`--fact-check` accept `none`, `--previous` chains supersede,
   `--check --approval <path>` audit mode, `--out`). Exit 0 APPROVED, 1
   CHANGES_REQUESTED/REJECTED (artifact still written) or stale in `--check`,
-  2 error. Writes `data/<run_id>/approval/human_approval_result.json` + run
-  state advanced to `Stage.PUBLISH`.
+  2 error. The default output run is the source input run; an explicit
+  `--run-id` is validated and may name a distinct run. Writes
+  `data/<run_id>/approval/human_approval_result.json` plus the corresponding
+  run state.
 
 ## 13. AnalyticsRecord
 

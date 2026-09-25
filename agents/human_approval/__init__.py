@@ -12,9 +12,10 @@ agents.human_approval` runs without a double-import RuntimeWarning.
 Stage 10 is HUMAN APPROVAL, a GATE -- it does NOT implement Stage 11 (YouTube
 upload/scheduling). It is deterministic, network-free, GPU-free, API-free, and
 is NOT a YouTube compliance guarantee. The artifact header `stage` label is
-"human_approval"; pipeline STATE is advanced to the existing generic
-Stage.PUBLISH (`STATE_STAGE` in models.py) -- no Stage enum member was added
-or renamed.
+"human_approval"; an approved decision advances pipeline bookkeeping to the
+existing generic Stage.PUBLISH (`STATE_STAGE` in models.py), while a
+non-approved decision remains at Stage.QUALITY_CHECK. No Stage enum member was
+added or renamed.
 """
 
 from __future__ import annotations
@@ -43,6 +44,7 @@ from agents.human_approval.models import (
     ReviewedArtifact,
     content_sha256,
     human_approval_id_for,
+    validate_run_id,
 )
 from agents.human_approval.validator import (
     DECISION_APPROVED,
@@ -55,6 +57,7 @@ from agents.human_approval.validator import (
     check_approval_freshness,
     evaluate_human_approval,
     is_superseded_by,
+    validate_approval_inputs,
 )
 
 __all__ = [
@@ -91,4 +94,6 @@ __all__ = [
     "evaluate_human_approval",
     "human_approval_id_for",
     "is_superseded_by",
+    "validate_approval_inputs",
+    "validate_run_id",
 ]

@@ -1,11 +1,11 @@
 # Stage 10 — Human Approval: Research & Design Report
 
-**Status:** RESEARCH / DESIGN ONLY — **NOT IMPLEMENTED.**
+**Status:** IMPLEMENTED in `agents/human_approval/` (Stage 10 complete).
 
-This document records the Stage-10 research/design pass over the current
-repository and existing architecture (Stages 1–9 complete, HEAD `5eacbf0`).
-No code was written. Stage 11 (YouTube upload) is intentionally out of scope;
-the project goal is a manual-upload-ready video package.
+This document records the Stage-10 research/design pass and the implemented
+contract over the current repository (Stages 1–9 complete). Stage 11 (YouTube
+upload) is intentionally out of scope; the project goal is a manual-upload-ready
+video package.
 
 ---
 
@@ -62,8 +62,11 @@ auditable: `sentence → claim → source` and `script → plan → generated ar
 
 ## C. Inputs
 
-Stage 10 consumes the full approval-relevant bundle (all optional with
-`None`-guards, mirroring `PolicyInputs` in `agents/qa/policy/models.py`):
+Stage 10 consumes the approval-relevant bundle. The required roles are
+`PolicyQAResult`, `VideoQAResult`, `VideoGenerationResult`, `ProductionPlan`,
+and `Script`; `ScriptQAResult` and `FactCheckResult` are optional and are
+validated and bound when present. The typed `ApprovalInputs` container mirrors
+the cross-stage `PolicyInputs` pattern:
 
 1. **Stage 9 `PolicyQAResult`** — the primary gate input (`policy_result_id`,
    `overall_verdict`, per-check records, `risk_summary`, `target_ref`).
@@ -80,13 +83,14 @@ Stage 10 consumes the full approval-relevant bundle (all optional with
    mock-first pipeline; Stage 10 grades what records prove (mirror of Stage
    8/9 “no media bytes exist, metadata-level checks”).
 
-Recommended input container: a typed `ApprovalInputs` dataclass mirroring
+Implemented input container: a typed `ApprovalInputs` dataclass mirroring
 `PolicyInputs`.
 
-## D. Outputs / proposed contract
+## D. Implemented output contract
 
-`HumanApprovalResult` — a versioned artifact following the §1 envelope.
-Proposed shape (sketch only, no code):
+`HumanApprovalResult` is a versioned artifact following the §1 envelope. The
+authoritative serialization and validation are in `agents/human_approval/models.py`;
+the canonical field list is maintained in `docs/DATA_CONTRACTS.md` §12.
 
 ```jsonc
 {
@@ -103,19 +107,21 @@ Proposed shape (sketch only, no code):
     "decision_at": "...iso...",
     "approver": {"approver_id": "...", "role": "owner"},
     "reviewed_artifacts": [               // EXACT reviewed version, incl. content digests
-      {"role": "policy_qa", "artifact_id": "pr_...", "content_sha256": "..."},
-      {"role": "video_qa",   "artifact_id": "qa_...", "content_sha256": "..."},
-      {"role": "video_result","artifact_id":"vg_...", "content_sha256": "..."},
-      {"role": "production_plan","artifact_id":"pp_...", "content_sha256": "..."},
-      {"role": "script",     "artifact_id": "sc_...",  "content_sha256": "..."}
+      {"role": "policy_qa", "artifact_id": "pr_...", "content_sha256": "...", "schema": "PolicyQAResult"},
+      {"role": "video_qa",   "artifact_id": "qa_...", "content_sha256": "...", "schema": "VideoQAResult"},
+      {"role": "video_result","artifact_id":"vg_...", "content_sha256": "...", "schema": "VideoGenerationResult"},
+      {"role": "production_plan","artifact_id":"pp_...", "content_sha256": "...", "schema": "ProductionPlan"},
+      {"role": "script",     "artifact_id": "sc_...",  "content_sha256": "...", "schema": "Script"},
+      {"role": "script_qa",  "artifact_id": "sqa_...", "content_sha256": "...", "schema": "ScriptQAResult"},
+      {"role": "fact_check", "artifact_id": "fc_...",  "content_sha256": "...", "schema": "FactCheckResult"}
     ],
     "prior_gate_verdicts": {             // relationship to previous QA results
-      "policy_qa": "PASS", "video_qa": "PASS", ...
+      "policy_qa": "PASS", "video_qa": "PASS", "video_generation": "completed", "script_qa": "PASS"
     },
     "overridden_verdicts": [...],        // recorded when a soft REVIEW is resolved
-    "blocking_conditions": [...],        // checked / still-unsatisfied
-    "manual_upload": {"required": true, "note": "No automated upload is implemented."},
-    "notes": "...",                      // reason/notes
+    "blocking_conditions": [...],        // complete required condition set
+    "manual_upload": {"ready": true, "required": true, "artifacts": ["pr_...", "..."], "note": "No automated upload is implemented. Endpoint is a manual upload only.", "title": "..."},
+    "notes": "...",                      // reviewer notes
     "changes_requested": [...],          // only when decision == CHANGES_REQUESTED
     "supersedes_approval_id": "",        // re-review chain (mirror resumed_from_* convention)
     "provenance": {"generated_by": "human_approval_gate_v1", "source": "HumanReviewer", ...}
@@ -137,7 +143,7 @@ Proposed shape (sketch only, no code):
 
 ## E. Approval state machine
 
-**Recommended:** `PENDING → APPROVED | CHANGES_REQUESTED | REJECTED`, plus
+**Implemented:** `PENDING → APPROVED | CHANGES_REQUESTED | REJECTED`, plus
 derived/invariant states `STALE` and `SUPERSEDED`.
 
 - `PENDING` — no human action yet (also the fail-closed default: a missing
@@ -171,9 +177,10 @@ Human-decision vocabulary must be disjoint from QA vocabulary.
 **May approval ever bypass a failed deterministic safety/policy gate?** No for
 any hard-gate failure. Soft REVIEW may be resolved by the human because the docs
 *design it that way* (`POLICY_AND_SAFETY.md` §3 “Ambiguous; needs a human
-decision”). Recommended strict variant: `APPROVED` requires
+decision”). The implemented rule is strict: `APPROVED` requires
 `PolicyQAResult.overall_verdict == "PASS"` **or** a recorded, justified
-`overridden_verdicts[]` entry with no hard-gate ERROR present.
+`overridden_verdicts[]` entry for every concrete soft finding, with no
+hard-gate ERROR present.
 
 **Always-blocking regardless of human approval:** Stage-9 hard REJECT; Stage-8
 hard REJECT; missing/dangling/mismatched artifacts; unsatisfied hard-gate
@@ -225,23 +232,16 @@ same philosophy as P01–P15’s “independently re-checkable” evidence.
 
 ## I. Pipeline/state implications
 
-**Recommendation: no new `Stage` enum member.** Mirror Stages 8/9: a
-`STATE_STAGE` constant mapping Stage 10’s artifact `stage="human_approval"`
-(task label) to the existing `Stage.PUBLISH`. Rationale:
+**Implemented:** no new `Stage` enum member. An `APPROVED` decision advances
+pipeline bookkeeping to the existing `Stage.PUBLISH`; `CHANGES_REQUESTED` and
+`REJECTED` remain under `Stage.QUALITY_CHECK`. The artifact header retains the
+task label `stage="human_approval"`. This never triggers uploads — `state.json`
+is bookkeeping only.
 
-- Decision #16/#17 in PROJECT_PROGRESS forbid new enum members for gate stages;
-  the human gate is the same category.
-- `Stage.PUBLISH` already exists and is the correct semantic position (last
-  gate before publish).
-- It never triggers uploads — `state.json` is only bookkeeping.
 
-Counter-option (surface, don’t guess): add a `Stage.HUMAN_APPROVAL` member
-**or** keep `Stage.QUALITY_CHECK`. Recommended: `Stage.PUBLISH`; see M1.
+## J. Implemented package/file structure
 
-## J. Proposed package/file structure
-
-No files created yet. Recommended layout, consistent with the
-`agents/<stage>/` pattern:
+The package follows the repository's `agents/<stage>/` pattern:
 
 ```
 agents/human_approval/
@@ -253,22 +253,22 @@ agents/human_approval/
 │                    digest-staleness, decision validation
 ├── stage.py         run_human_approval(...), loaders, pairing/digest guards
 ├── __main__.py      CLI: writes data/<run_id>/approval/human_approval_result.json
-│                    + state.json advanced to Stage.PUBLISH
+│                    + decision-aware state.json update
 tests/
 ├── test_human_approval_models.py / _validator.py / _stage.py / _safety.py
 └── human_approval_test_utils.py
 ```
 
-- Storage: `data/<run_id>/approval/human_approval_result.json` (new subdir;
-  alternative: reuse `production/` — see M9).
+- Storage: `data/<run_id>/approval/human_approval_result.json`.
 - CLI exit codes: 0 = APPROVED, 1 = CHANGES_REQUESTED/REJECTED (artifact still
   written), 2 = error — matching the established Stage 9 convention.
 - `produced_by.model = null`; the “producer” is a human, never a
   model/provider — consistent with deterministic stages.
 
-## K. Test plan (all deterministic; human input is injected, not simulated UI)
+## K. Implemented test coverage (all deterministic; human input is injected, not simulated UI)
 
-Proposed suite shape (mirrors existing stage-test patterns, e.g.
+The implementation follows this suite shape (mirrors existing stage-test
+patterns, e.g.
 `tests/test_policy_qa_stage.py`):
 
 1. **Approval** — clean PASS bundle → valid `HumanApprovalResult`,
@@ -293,57 +293,50 @@ Proposed suite shape (mirrors existing stage-test patterns, e.g.
     tests prove the stage runs with sockets blocked and never writes outside its
     artifact (mirror `test_policy_qa_safety.py` / `test_video_generation_safety.py`).
 
-## L. Documentation changes required (when implementing — not now)
+## L. Documentation changes completed
 
-- `docs/PROJECT_PROGRESS.md` — add Stage 10 section (status, package, state
-  mapping decision), bump test count.
-- `docs/DATA_CONTRACTS.md` — new contract section (+ §1 stage-label exception
-  entry for `human_approval`, §14 storage layout, §15 ID prefix).
-- `docs/POLICY_AND_SAFETY.md` — §7 refine: current mock-first pipeline has no
-  finished video; the gate grades records; manual-upload note; state mapping.
-- `docs/ARCHITECTURE.md` — §4.4/gates note; also fix its stale
-  “nothing…implemented yet” intro (see M/conflicts).
-- `README.md` — CLI entry + test count (797 → 920).
+- `docs/PROJECT_PROGRESS.md` — Stage 10 status, package, state mapping, and
+  verification notes.
+- `docs/DATA_CONTRACTS.md` — implemented §12 contract, envelope, roles, gates,
+  storage, and CLI semantics.
+- `docs/POLICY_AND_SAFETY.md` — updated gate, override, freshness, and manual
+  upload safety semantics.
+- This design document — implementation status, package layout, and resolved
+  decisions.
 
-## M. Open decisions requiring approval
+## M. Resolved implementation decisions
 
-1. **State mapping**: `Stage.PUBLISH` (recommended) vs `Stage.QUALITY_CHECK` vs
-   new `Stage.HUMAN_APPROVAL` member (contradicts decision #17).
-2. **Package placement**: `agents/human_approval/` (recommended) vs
-   `agents/qa/approval/`.
-3. **Approval when policy = soft REVIEW**: allowed-with-recorded-override
-   (recommended, matches “REVIEW = needs human decision”) vs PASS-only (stricter).
-4. **Human `REJECTED` finality**: terminal for the reviewed artifact version
-   (recommended) vs re-openable.
-5. **Version binding**: content digests (recommended; ids are
-   content-independent) vs timestamps only.
-6. **“Manual-upload-ready” package**: define a minimal artifact
-   manifest/readiness section now (recommended) vs defer; it must contain only
-   references + title/description/tags drafts from existing metadata — **no**
-   upload code.
-7. **`CHANGES_REQUESTED` structure**: require structured issue refs + required
-   fixes (recommended) vs free text only.
-8. **Approver identity**: free-form `approver_id`/`role` input (recommended, no
-   auth exists) vs env-injected only.
-9. **Artifact location**: `data/<run_id>/approval/` (recommended) vs
-   `data/<run_id>/production/`.
-10. **Freshness re-check**: Stage 10 verifies current files match the supplied
-    `PolicyQAResult` digest (recommended) vs trusts the record as-is.
+1. **State mapping:** approved records advance to `Stage.PUBLISH`; non-approved
+   decisions remain at `Stage.QUALITY_CHECK`; no new enum member is added.
+2. **Package placement:** `agents/human_approval/`.
+3. **Approval with soft REVIEW:** allowed only with a concrete, version-bound
+   override; hard REJECT is never overrideable.
+4. **Human REJECTED:** terminal for the reviewed artifact version.
+5. **Version binding:** stable id plus canonical-content SHA-256.
+6. **Manual-upload-ready package:** a manifest/readiness section containing only
+   references and the title; no upload code.
+7. **CHANGES_REQUESTED structure:** structured requirements with optional issue
+   references, or a non-empty note.
+8. **Approver identity:** explicit free-form `approver_id` and optional role;
+   no authentication system is implied.
+9. **Artifact location:** `data/<run_id>/approval/`.
+10. **Freshness re-check:** current artifact ids and digests are verified before
+    an approval is considered effective.
 
 ## N. Explicit statement
 
 **Stage 10 — Human Approval IS IMPLEMENTED.** `agents/human_approval/`
-(`models.py`, `validator.py`, `stage.py`, `__main__.py`, `__init__.py`), 123
-tests (`tests/test_human_approval_{models,validator,stage,safety}.py` +
-`tests/human_approval_test_utils.py`), committed fixture
-`data/mock/policy_qa_result.json`, and the doc updates described in the check
-list were completed. Stage 11 (YouTube upload) remains out of scope.
+(`models.py`, `validator.py`, `stage.py`, `__main__.py`, `__init__.py`) contains
+the deterministic gate, strict artifact loaders, freshness checks, and CLI.
+The focused Stage 10 suite covers the implemented contract; Stage 11 (YouTube
+upload) remains out of scope.
 
 ---
 
-## Final checks (at time of writing)
+## Final checks
 
-- **git status:** uncommitted Stage-10 work (the 5 package modules, the
-  fixture, the 5 test files, and doc edits). No commit made.
-- **current HEAD:** `5eacbf0` `feat: implement stage 9 policy QA`
-- **pytest:** `920 passed` (`python -m pytest tests -q`).
+- **Focused Stage 10 tests:** `141 passed` with
+  `python -m pytest -q tests/test_human_approval_models.py tests/test_human_approval_validator.py tests/test_human_approval_stage.py tests/test_human_approval_safety.py`.
+- **Full suite:** rerun after the final documentation and code changes.
+- **Git:** no commit made; `docs/PROJECT_PROGRESS.md` retains its pre-existing
+  working-tree changes.

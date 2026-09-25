@@ -1,7 +1,7 @@
 """Versioned Stage-10 (human approval) models.
 
 Stage 10 is the HUMAN APPROVAL GATE on top of the fully QA'd artifact chain:
-the Stage-3 Script, the Stage-5 FactCheckResult, the Stage-5 ScriptQAResult,
+the Stage-4 Script, the Stage-5 FactCheckResult, the Stage-5 ScriptQAResult,
 the Stage-6 ProductionPlan, the Stage-7 VideoGenerationResult, the Stage-8
 VideoQAResult, and the Stage-9 PolicyQAResult
 (docs/PROJECT_PROGRESS.md Stage 10 / docs/POLICY_AND_SAFETY.md / docs/
@@ -31,11 +31,11 @@ provider=None / model=None and provenance.generated_by is
 
 Stage label vs. pipeline state: the artifact header `stage` is
 `"human_approval"` (per the Stage-10 task). The numbered Stage 10 advances
-pipeline STATE to the existing generic `Stage.PUBLISH` (pipeline/state.py) as
-a bookkeeping marker that the run is approved for publishing; no new enum
-member is added or renamed. `STATE_STAGE` records that mapping explicitly.
-This stage never uploads, schedules, or touches YouTube -- Stage 11 is not
-implemented anywhere in this package.
+pipeline bookkeeping to the existing generic `Stage.PUBLISH` for an approved
+decision; non-approved decisions remain at `Stage.QUALITY_CHECK`. No new enum
+member is added or renamed. `STATE_STAGE` records the approved-state mapping
+explicitly. This stage never uploads, schedules, or touches YouTube -- Stage
+11 is not implemented anywhere in this package.
 """
 
 from __future__ import annotations
@@ -62,12 +62,13 @@ SCHEMA_VERSION = 1
 
 #: Artifact-header `stage` label (per the Stage-10 task; documented in
 #: DATA_CONTRACTS.md and PROJECT_PROGRESS.md Stage 10). Not a
-#: pipeline/state.py Stage member -- that mapping is `STATE_STAGE`.
+#: pipeline/state.py Stage member -- approved decisions map to `STATE_STAGE`,
+#: while non-approved decisions remain at `Stage.QUALITY_CHECK`.
 STAGE = "human_approval"
 
 #: Numbered Stage 10 (Human Approval) advances PipelineState to the EXISTING
-#: generic publish stage as a bookkeeping marker that the run is human-approved
-#: for the manual-upload endpoint. No new enum member was added or renamed.
+#: generic publish stage for an approved decision as a bookkeeping marker. No
+#: new enum member was added or renamed.
 STATE_STAGE = Stage.PUBLISH
 
 #: Version of the Stage-10 process (recorded in provenance and produced_by).
@@ -105,6 +106,13 @@ REQUIRED_ROLES = (
     "video_result",
     "production_plan",
     "script",
+)
+BLOCKING_CONDITION_CODES = (
+    "required_artifacts",
+    "policy_qa_hard_reject",
+    "video_qa_hard_reject",
+    "video_generation_completed",
+    "review_overrides",
 )
 
 #: ApprovalInputs attribute for each role.
@@ -159,6 +167,8 @@ MANUAL_UPLOAD_NOTE = (
 )
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_APPROVAL_ID_RE = re.compile(r"^ha_[0-9a-f]{12}$")
 
 
 class HumanApprovalError(ValueError):
@@ -175,6 +185,18 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def validate_run_id(value: Any) -> str:
+    """Validate an opaque run identifier before it is used in a path."""
+    if not isinstance(value, str) or not _RUN_ID_RE.fullmatch(value):
+        raise HumanApprovalError(
+            "run_id must be 1-128 characters using letters, digits, '.', '_' "
+            f"or '-', and must start with a letter or digit; got {value!r}"
+        )
+    if ".." in value:
+        raise HumanApprovalError(f"run_id contains a path traversal sequence: {value!r}")
+    return value
+
+
 def human_approval_id_for(run_id: str, target_ref: str) -> str:
     """Stable HumanApprovalResult id per (run_id, target_ref); deterministic.
 
@@ -182,9 +204,10 @@ def human_approval_id_for(run_id: str, target_ref: str) -> str:
     reviewed-artifact digests, so the id never silently changes underneath an
     audit trail.
     """
-    digest = hashlib.sha1(
-        f"{run_id or ''}:{target_ref or ''}".encode("utf-8")
-    ).hexdigest()[:12]
+    run_id = validate_run_id(run_id)
+    if not isinstance(target_ref, str) or not target_ref.strip():
+        raise HumanApprovalError(f"target_ref must be non-empty text, got {target_ref!r}")
+    digest = hashlib.sha1(f"{run_id}:{target_ref}".encode("utf-8")).hexdigest()[:12]
     return f"ha_{digest}"
 
 
@@ -220,10 +243,14 @@ class ReviewedArtifact:
     schema: str = ""
 
     def validate(self) -> "ReviewedArtifact":
-        if self.role not in ROLES:
+        if not isinstance(self.role, str) or self.role not in ROLES:
             raise HumanApprovalError(
                 f"unknown reviewed-artifact role {self.role!r} (allowed: {ROLES})"
             )
+        if not isinstance(self.artifact_id, str):
+            raise HumanApprovalError("artifact_id must be text")
+        if not isinstance(self.content_sha256, str):
+            raise HumanApprovalError("content_sha256 must be text")
         object.__setattr__(self, "artifact_id", _require(self.artifact_id, "artifact_id"))
         digest = self.content_sha256 or ""
         if not _SHA256_RE.fullmatch(digest):
@@ -274,6 +301,10 @@ class Approver:
     role: str = ""
 
     def validate(self) -> "Approver":
+        if not isinstance(self.approver_id, str):
+            raise HumanApprovalError("approver_id must be text")
+        if not isinstance(self.role, str):
+            raise HumanApprovalError("approver role must be text")
         object.__setattr__(self, "approver_id", _require(self.approver_id, "approver_id"))
         return self
 
@@ -314,12 +345,26 @@ class OverriddenVerdict:
     artifact_id: str = ""
 
     def validate(self) -> "OverriddenVerdict":
-        if self.gate not in ("policy_qa", "video_qa"):
-            raise HumanApprovalError(f"override gate must be policy_qa or video_qa, got {self.gate!r}")
-        if self.verdict not in ("PASS", "REVIEW", "REJECT"):
-            raise HumanApprovalError(f"overridden verdict must be PASS/REVIEW/REJECT, got {self.verdict!r}")
-        if self.decision not in WRITABLE_DECISIONS:
-            raise HumanApprovalError(f"override decision must be writable, got {self.decision!r}")
+        if not isinstance(self.gate, str) or self.gate not in ("policy_qa", "video_qa"):
+            raise HumanApprovalError(
+                f"override gate must be policy_qa or video_qa, got {self.gate!r}"
+            )
+        if not isinstance(self.check_id, str):
+            raise HumanApprovalError(f"override check_id must be text, got {self.check_id!r}")
+        if not isinstance(self.verdict, str) or self.verdict not in ("PASS", "REVIEW", "REJECT"):
+            raise HumanApprovalError(
+                f"overridden verdict must be PASS/REVIEW/REJECT, got {self.verdict!r}"
+            )
+        if not isinstance(self.decision, str) or self.decision not in WRITABLE_DECISIONS:
+            raise HumanApprovalError(
+                f"override decision must be writable, got {self.decision!r}"
+            )
+        if not isinstance(self.artifact_id, str):
+            raise HumanApprovalError(
+                f"override artifact_id must be text, got {self.artifact_id!r}"
+            )
+        if not isinstance(self.justification, str):
+            raise HumanApprovalError("override justification must be text")
         object.__setattr__(
             self, "justification", _require(self.justification, "justification")
         )
@@ -373,10 +418,18 @@ class BlockingCondition:
     def from_dict(cls, data: dict) -> "BlockingCondition":
         if not isinstance(data, dict):
             raise HumanApprovalError(f"blocking condition must be a mapping, got {data!r}")
+        satisfied = data.get("satisfied")
+        if not isinstance(satisfied, bool):
+            raise HumanApprovalError(
+                f"blocking condition satisfied must be a boolean, got {satisfied!r}"
+            )
+        detail = data.get("detail", "")
+        if not isinstance(detail, str):
+            raise HumanApprovalError(f"blocking condition detail must be text, got {detail!r}")
         return cls(
             code=_require(data.get("code"), "code"),
-            satisfied=bool(data.get("satisfied", False)),
-            detail=data.get("detail") or "",
+            satisfied=satisfied,
+            detail=detail,
         )
 
 
@@ -392,6 +445,10 @@ class RequestedChange:
     requirement: str = ""
 
     def validate(self) -> "RequestedChange":
+        if not isinstance(self.issue_ref, str):
+            raise HumanApprovalError("requested-change issue_ref must be text")
+        if not isinstance(self.requirement, str):
+            raise HumanApprovalError("requested-change requirement must be text")
         object.__setattr__(
             self, "requirement", _require(self.requirement, "requirement")
         )
@@ -430,6 +487,19 @@ class ManualUploadReadiness:
     artifacts: tuple[str, ...] = ()
     title: str = ""
 
+    def validate(self) -> "ManualUploadReadiness":
+        if not isinstance(self.ready, bool) or not isinstance(self.required, bool):
+            raise HumanApprovalError("manual-upload readiness flags must be booleans")
+        if not isinstance(self.note, str) or not isinstance(self.title, str):
+            raise HumanApprovalError("manual-upload note/title must be text")
+        if not isinstance(self.artifacts, tuple) or not all(
+            isinstance(item, str) and item for item in self.artifacts
+        ):
+            raise HumanApprovalError("manual-upload artifacts must be a tuple of ids")
+        if len(set(self.artifacts)) != len(self.artifacts):
+            raise HumanApprovalError("manual-upload artifacts must be unique")
+        return self
+
     def to_dict(self) -> dict:
         return {
             "ready": self.ready,
@@ -445,13 +515,26 @@ class ManualUploadReadiness:
             raise HumanApprovalError(
                 f"manual-upload readiness must be a mapping, got {data!r}"
             )
+        ready = data.get("ready")
+        required = data.get("required", True)
+        if not isinstance(ready, bool) or not isinstance(required, bool):
+            raise HumanApprovalError("manual-upload readiness flags must be booleans")
+        artifacts = data.get("artifacts", [])
+        if not isinstance(artifacts, list) or not all(
+            isinstance(item, str) and item for item in artifacts
+        ):
+            raise HumanApprovalError("manual-upload artifacts must be a list of ids")
+        note = data.get("note", MANUAL_UPLOAD_NOTE)
+        title = data.get("title", "")
+        if not isinstance(note, str) or not isinstance(title, str):
+            raise HumanApprovalError("manual-upload note/title must be text")
         return cls(
-            ready=bool(data.get("ready", False)),
-            required=bool(data.get("required", True)),
-            note=data.get("note") or MANUAL_UPLOAD_NOTE,
-            artifacts=tuple(data.get("artifacts") or ()),
-            title=data.get("title") or "",
-        )
+            ready=ready,
+            required=required,
+            note=note or MANUAL_UPLOAD_NOTE,
+            artifacts=tuple(artifacts),
+            title=title,
+        ).validate()
 
 
 # --------------------------------------------------------------------------- #
@@ -468,15 +551,19 @@ class HumanApprovalConfig:
     require_override_for_review: bool = True
 
     def validate(self) -> "HumanApprovalConfig":
-        if not self.schema_version.strip():
+        if not isinstance(self.schema_version, str) or not self.schema_version.strip():
             raise HumanApprovalError("schema_version must not be empty")
-        if not self.required_roles:
-            raise HumanApprovalError("required_roles must not be empty")
-        for role in self.required_roles:
-            if role not in ROLES:
-                raise HumanApprovalError(
-                    f"required role {role!r} not in ROLES (allowed: {ROLES})"
-                )
+        if not isinstance(self.required_roles, tuple) or not self.required_roles:
+            raise HumanApprovalError("required_roles must be a non-empty tuple")
+        if not all(isinstance(role, str) and role in ROLES for role in self.required_roles):
+            raise HumanApprovalError(
+                "required_roles must contain only known role names "
+                f"(allowed: {ROLES})"
+            )
+        if len(set(self.required_roles)) != len(self.required_roles):
+            raise HumanApprovalError("required_roles must not contain duplicates")
+        if not isinstance(self.require_override_for_review, bool):
+            raise HumanApprovalError("require_override_for_review must be a boolean")
         return self
 
 
@@ -551,25 +638,106 @@ class HumanApprovalResult:
         return all(condition.satisfied for condition in self.blocking_conditions)
 
     def validate(self) -> "HumanApprovalResult":
-        _require(self.approval_id, "approval_id")
+        if not isinstance(self.approval_id, str) or not _APPROVAL_ID_RE.fullmatch(self.approval_id):
+            raise HumanApprovalError(f"invalid approval_id: {self.approval_id!r}")
+        if not isinstance(self.target_ref, str):
+            raise HumanApprovalError("target_ref must be text")
         _require(self.target_ref, "target_ref")
+        if not isinstance(self.decision_at, str):
+            raise HumanApprovalError("decision_at must be text")
         _require(self.decision_at, "decision_at")
-        if self.decision not in DECISIONS:
+        validate_run_id(self.run_id)
+        if self.schema != SCHEMA:
+            raise HumanApprovalError(f"schema must be {SCHEMA!r}, got {self.schema!r}")
+        if isinstance(self.schema_version, bool) or self.schema_version != SCHEMA_VERSION:
+            raise HumanApprovalError(
+                f"schema_version must be {SCHEMA_VERSION}, got {self.schema_version!r}"
+            )
+        if self.stage != STAGE:
+            raise HumanApprovalError(f"stage must be {STAGE!r}, got {self.stage!r}")
+        if not isinstance(self.produced_by, dict):
+            raise HumanApprovalError("produced_by must be a mapping")
+        if self.produced_by.get("provider") is not None or self.produced_by.get("model") is not None:
+            raise HumanApprovalError("human approval produced_by provider/model must be null")
+        if self.produced_by.get("prompt_version") != HUMAN_APPROVAL_CONFIG_VERSION:
+            raise HumanApprovalError("human approval produced_by prompt_version is invalid")
+        if not isinstance(self.decision, str) or self.decision not in DECISIONS:
             raise HumanApprovalError(
                 f"decision must be one of {DECISIONS}, got {self.decision!r}"
             )
+        if not isinstance(self.notes, str):
+            raise HumanApprovalError("notes must be text")
+        if not isinstance(self.prior_gate_verdicts, dict) or not all(
+            isinstance(key, str) and isinstance(value, str)
+            for key, value in self.prior_gate_verdicts.items()
+        ):
+            raise HumanApprovalError("prior_gate_verdicts must map text to text")
+        if set(self.prior_gate_verdicts) != {
+            "policy_qa",
+            "video_qa",
+            "video_generation",
+            "script_qa",
+        }:
+            raise HumanApprovalError("prior_gate_verdicts has an unexpected key set")
+        if not isinstance(self.reviewed_artifacts, tuple):
+            raise HumanApprovalError("reviewed_artifacts must be a tuple")
         if not self.reviewed_artifacts:
             raise HumanApprovalError("reviewed_artifacts must not be empty")
+        if not all(isinstance(artifact, ReviewedArtifact) for artifact in self.reviewed_artifacts):
+            raise HumanApprovalError("reviewed_artifacts contains an invalid artifact")
+        if not all(isinstance(artifact.role, str) for artifact in self.reviewed_artifacts):
+            raise HumanApprovalError("reviewed artifact roles must be text")
         roles = [artifact.role for artifact in self.reviewed_artifacts]
         if len(set(roles)) != len(roles):
             raise HumanApprovalError("reviewed_artifacts roles must be unique")
-        self.approver.validate()
+        expected_order = [role for role in ROLES if role in roles]
+        if roles != expected_order:
+            raise HumanApprovalError("reviewed_artifacts must follow the stable role order")
+        missing_roles = set(REQUIRED_ROLES) - set(roles)
+        if missing_roles:
+            raise HumanApprovalError(
+                "reviewed_artifacts missing required roles: " + ", ".join(sorted(missing_roles))
+            )
         for artifact in self.reviewed_artifacts:
             artifact.validate()
+        if not isinstance(self.blocking_conditions, tuple):
+            raise HumanApprovalError("blocking_conditions must be a tuple")
+        if not isinstance(self.approver, Approver):
+            raise HumanApprovalError("approver must be an Approver")
+        self.approver.validate()
         for condition in self.blocking_conditions:
-            condition.code
+            if not isinstance(condition, BlockingCondition):
+                raise HumanApprovalError("blocking_conditions contains an invalid condition")
+            if not isinstance(condition.code, str):
+                raise HumanApprovalError("blocking condition code must be text")
+            _require(condition.code, "blocking condition code")
+            if not isinstance(condition.satisfied, bool):
+                raise HumanApprovalError("blocking condition satisfied must be boolean")
+            if not isinstance(condition.detail, str):
+                raise HumanApprovalError("blocking condition detail must be text")
+        condition_codes = [condition.code for condition in self.blocking_conditions]
+        if len(set(condition_codes)) != len(condition_codes):
+            raise HumanApprovalError("blocking condition codes must be unique")
+        if set(condition_codes) != set(BLOCKING_CONDITION_CODES):
+            raise HumanApprovalError("blocking conditions must contain the complete gate set")
+        if not isinstance(self.overridden_verdicts, tuple) or not all(
+            isinstance(override, OverriddenVerdict) for override in self.overridden_verdicts
+        ):
+            raise HumanApprovalError("overridden_verdicts must contain valid overrides")
         for override in self.overridden_verdicts:
             override.validate()
+            if not override.check_id or not override.artifact_id:
+                raise HumanApprovalError(
+                    "recorded overrides must include check_id and artifact_id"
+                )
+        if not isinstance(self.changes_requested, tuple) or not all(
+            isinstance(change, RequestedChange) for change in self.changes_requested
+        ):
+            raise HumanApprovalError("changes_requested must contain valid changes")
+        for change in self.changes_requested:
+            change.validate()
+        if self.decision == "APPROVED" and not self.blocking_conditions:
+            raise HumanApprovalError("APPROVED requires evaluated blocking conditions")
         if self.decision == "APPROVED" and not self.gates_cleared:
             failed = [
                 f"{c.code} ({c.detail})" for c in self.blocking_conditions if not c.satisfied
@@ -582,12 +750,37 @@ class HumanApprovalResult:
                 raise HumanApprovalError(
                     "CHANGES_REQUESTED needs at least one requested change or a note"
                 )
-        if self.provenance is None:
+        if not isinstance(self.provenance, Provenance):
             raise HumanApprovalError("HumanApprovalResult provenance is required")
-        if self.manual_upload is None:
-            raise HumanApprovalError("manual-upload readiness is required")
-        if self.supersedes_approval_id and self.supersedes_approval_id == self.approval_id:
-            raise HumanApprovalError("an approval cannot supersede itself")
+        if (
+            self.provenance.generated_by != PROVENANCE_GENERATED_BY
+            or self.provenance.source != PROVENANCE_SOURCE
+            or self.provenance.provider is not None
+            or self.provenance.model is not None
+            or self.provenance.prompt_version != HUMAN_APPROVAL_CONFIG_VERSION
+        ):
+            raise HumanApprovalError("HumanApprovalResult provenance is not human-review provenance")
+        if not isinstance(self.manual_upload, ManualUploadReadiness):
+            raise HumanApprovalError("manual-upload readiness must be a ManualUploadReadiness")
+        self.manual_upload.validate()
+        if not self.manual_upload.required:
+            raise HumanApprovalError("manual_upload.required must be true")
+        expected_artifact_ids = tuple(artifact.artifact_id for artifact in self.reviewed_artifacts)
+        if self.manual_upload.artifacts != expected_artifact_ids:
+            raise HumanApprovalError("manual_upload.artifacts must match reviewed_artifacts")
+        if self.manual_upload.ready != (self.decision == "APPROVED" and self.gates_cleared):
+            raise HumanApprovalError(
+                "manual_upload.ready must exactly match the approved, gates-cleared decision"
+            )
+        if not isinstance(self.supersedes_approval_id, str):
+            raise HumanApprovalError("supersedes_approval_id must be text")
+        if self.supersedes_approval_id:
+            if not _APPROVAL_ID_RE.fullmatch(self.supersedes_approval_id):
+                raise HumanApprovalError("supersedes_approval_id must be a valid approval id")
+            if self.supersedes_approval_id == self.approval_id:
+                raise HumanApprovalError("an approval cannot supersede itself")
+        if self.approval_id != human_approval_id_for(self.run_id, self.target_ref):
+            raise HumanApprovalError("approval_id does not match run_id and target_ref")
         return self
 
     def to_dict(self) -> dict:
@@ -629,48 +822,129 @@ class HumanApprovalResult:
 
     @classmethod
     def from_dict(cls, data: dict) -> "HumanApprovalResult":
+        if not isinstance(data, dict):
+            raise HumanApprovalError(f"HumanApprovalResult must be a mapping, got {data!r}")
         header = dict(data)
-        payload = header.pop("data")
-        result = cls(
-            approval_id=_require(payload.get("approval_id"), "approval_id"),
-            target_ref=_require(payload.get("target_ref"), "target_ref"),
-            decision=_require(payload.get("decision"), "decision"),
-            decision_at=_require(payload.get("decision_at"), "decision_at"),
-            approver=Approver.from_dict(payload["approver"]),
-            reviewed_artifacts=tuple(
-                ReviewedArtifact.from_dict(item)
-                for item in payload.get("reviewed_artifacts") or []
-            ),
-            blocking_conditions=tuple(
-                BlockingCondition.from_dict(item)
-                for item in payload.get("blocking_conditions") or []
-            ),
-            prior_gate_verdicts=dict(payload.get("prior_gate_verdicts") or {}),
-            overridden_verdicts=tuple(
-                OverriddenVerdict.from_dict(item)
-                for item in payload.get("overridden_verdicts") or []
-            ),
-            manual_upload=ManualUploadReadiness.from_dict(payload["manual_upload"])
-            if payload.get("manual_upload")
-            else None,
-            notes=payload.get("notes") or "",
-            changes_requested=tuple(
-                RequestedChange.from_dict(item)
-                for item in payload.get("changes_requested") or []
-            ),
-            supersedes_approval_id=payload.get("supersedes_approval_id") or "",
-            provenance=Provenance.from_dict(payload["provenance"])
-            if payload.get("provenance")
-            else None,
-            schema=header.get("schema", SCHEMA),
-            schema_version=header.get("schema_version", SCHEMA_VERSION),
-            created_at=header["created_at"],
-            stage=header.get("stage", STAGE),
-            run_id=header.get("run_id", ""),
-            produced_by=header.get("produced_by") or dict(PRODUCED_BY),
-        )
+        required_header = {
+            "schema",
+            "schema_version",
+            "created_at",
+            "run_id",
+            "stage",
+            "produced_by",
+            "data",
+        }
+        missing_header = sorted(required_header - set(header))
+        if missing_header:
+            raise HumanApprovalError(
+                "HumanApprovalResult missing envelope fields: " + ", ".join(missing_header)
+            )
+        if header["schema"] != SCHEMA:
+            raise HumanApprovalError(f"schema must be {SCHEMA!r}, got {header['schema']!r}")
+        if (
+            isinstance(header["schema_version"], bool)
+            or not isinstance(header["schema_version"], int)
+            or header["schema_version"] != SCHEMA_VERSION
+        ):
+            raise HumanApprovalError(
+                f"schema_version must be {SCHEMA_VERSION}, got {header['schema_version']!r}"
+            )
+        if not isinstance(header["created_at"], str) or not header["created_at"].strip():
+            raise HumanApprovalError("HumanApprovalResult created_at must be an ISO timestamp")
+        if not isinstance(header["run_id"], str):
+            raise HumanApprovalError("HumanApprovalResult run_id must be text")
+        validate_run_id(header["run_id"])
+        if header["stage"] != STAGE:
+            raise HumanApprovalError(f"stage must be {STAGE!r}, got {header['stage']!r}")
+        if not isinstance(header["produced_by"], dict):
+            raise HumanApprovalError("HumanApprovalResult produced_by must be a mapping")
+        payload = header["data"]
+        if not isinstance(payload, dict):
+            raise HumanApprovalError("HumanApprovalResult data must be a mapping")
+        required_payload = {
+            "approval_id",
+            "target_ref",
+            "decision",
+            "decision_at",
+            "approver",
+            "reviewed_artifacts",
+            "blocking_conditions",
+            "prior_gate_verdicts",
+            "overridden_verdicts",
+            "manual_upload",
+            "notes",
+            "changes_requested",
+            "supersedes_approval_id",
+            "provenance",
+        }
+        missing_payload = sorted(required_payload - set(payload))
+        if missing_payload:
+            raise HumanApprovalError(
+                "HumanApprovalResult missing data fields: " + ", ".join(missing_payload)
+            )
+        for field_name in (
+            "reviewed_artifacts",
+            "blocking_conditions",
+            "overridden_verdicts",
+            "changes_requested",
+        ):
+            if not isinstance(payload[field_name], list):
+                raise HumanApprovalError(f"{field_name} must be a JSON array")
+        if not isinstance(payload["prior_gate_verdicts"], dict):
+            raise HumanApprovalError("prior_gate_verdicts must be a mapping")
+        if not isinstance(payload["provenance"], dict):
+            raise HumanApprovalError("provenance must be a mapping")
+        if not isinstance(payload["notes"], str):
+            raise HumanApprovalError("notes must be text")
+        if not isinstance(payload["supersedes_approval_id"], str):
+            raise HumanApprovalError("supersedes_approval_id must be text")
+        try:
+            result = cls(
+                approval_id=_require(payload["approval_id"], "approval_id"),
+                target_ref=_require(payload["target_ref"], "target_ref"),
+                decision=_require(payload["decision"], "decision"),
+                decision_at=_require(payload["decision_at"], "decision_at"),
+                approver=Approver.from_dict(payload["approver"]),
+                reviewed_artifacts=tuple(
+                    ReviewedArtifact.from_dict(item)
+                    for item in payload["reviewed_artifacts"]
+                ),
+                blocking_conditions=tuple(
+                    BlockingCondition.from_dict(item)
+                    for item in payload["blocking_conditions"]
+                ),
+                prior_gate_verdicts=dict(payload["prior_gate_verdicts"]),
+                overridden_verdicts=tuple(
+                    OverriddenVerdict.from_dict(item)
+                    for item in payload["overridden_verdicts"]
+                ),
+                manual_upload=ManualUploadReadiness.from_dict(payload["manual_upload"]),
+                notes=payload["notes"],
+                changes_requested=tuple(
+                    RequestedChange.from_dict(item)
+                    for item in payload["changes_requested"]
+                ),
+                supersedes_approval_id=payload["supersedes_approval_id"],
+                provenance=Provenance.from_dict(payload["provenance"]),
+                schema=header["schema"],
+                schema_version=header["schema_version"],
+                created_at=header["created_at"],
+                stage=header["stage"],
+                run_id=header["run_id"],
+                produced_by=dict(header["produced_by"]),
+            )
+        except HumanApprovalError:
+            raise
+        except (KeyError, TypeError, ValueError) as exc:
+            raise HumanApprovalError(f"malformed HumanApprovalResult: {exc}") from exc
         return result.validate()
 
     @classmethod
     def from_json(cls, text: str) -> "HumanApprovalResult":
-        return cls.from_dict(json.loads(text))
+        if not isinstance(text, str):
+            raise HumanApprovalError("HumanApprovalResult JSON must be text")
+        try:
+            data = json.loads(text)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise HumanApprovalError(f"invalid HumanApprovalResult JSON: {exc}") from exc
+        return cls.from_dict(data)

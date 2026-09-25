@@ -148,8 +148,8 @@ publishing stage. Full contract in `docs/DATA_CONTRACTS.md` §12 and design in
 `docs/HUMAN_APPROVAL_STAGE10_DESIGN.md`.
 
 - **Mandatory** before any YouTube upload: setup, metadata, and manual upload
-  happen by hand; the stage produces a `ManualUploadReadiness` ready flag
-  (`BooleanOperand "manual_upload"` `True`) plus the upload title.
+  happen by hand; the stage produces a `ManualUploadReadiness` flag, an exact
+  artifact manifest, and the upload title.
 - The gate presents: policy report (Stage 9), video QA report (Stage 8),
   video generation result (Stage 7), production plan (Stage 6), script
   (Stage 4), and the optional script-QA / fact-check results.
@@ -169,16 +169,16 @@ publishing stage. Full contract in `docs/DATA_CONTRACTS.md` §12 and design in
   (`policy_qa`) may be overridden to a recorded explainable decision; a hard
   `REJECT` can never be overridden. Every override is bound to the
   `artifact_id` of the exact artifact version it reviewed.
-- **Staleness / supersede:** each reviewed artifact records
-  `content_sha256` (canonical SHA-256 of the artifact payload) and `artifacts.bind`
-  records ids; `check_approval_freshness` and `approval_is_effective` fail the
-  digest/id comparison, so a stale approval is detected (`--check
-  --approval <path>`); a newer approval supersedes an earlier one via
-  `supersedes_approval_id`.
+- **Staleness / supersede:** each reviewed artifact records its stable id and
+  `content_sha256` (canonical SHA-256 of the artifact payload);
+  `check_approval_freshness` and `approval_is_effective` fail the digest/id
+  comparison, so a stale approval is detected (`--check --approval <path>`); a
+  newer approval supersedes an earlier one via `supersedes_approval_id`.
 - CLI: `python -m agents.human_approval` (exit 0 APPROVED, 1
   CHANGES_REQUESTED/REJECTED or stale in `--check` mode, 2 error). Writes
-  `data/<run_id>/approval/human_approval_result.json` + run state advanced to
-  the existing generic `Stage.PUBLISH` (Stage 10 does not implement any upload).
+  `data/<run_id>/approval/human_approval_result.json`; approved runs advance
+  bookkeeping to `Stage.PUBLISH`, while non-approved decisions remain at
+  `Stage.QUALITY_CHECK`. Stage 10 does not implement any upload.
 - Automating approval remains possible **later, only after sufficient
   testing**; the stage stays a first-class record so a future automated
   approver produces the same contract.
