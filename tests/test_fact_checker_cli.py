@@ -270,3 +270,147 @@ def test_unknown_retriever_exits_error(monkeypatch, tmp_path, capsys):
     assert main() == 2
     assert not (tmp_path / "fc_rb.json").exists()
     assert "unknown retriever" in (capsys.readouterr().err + capsys.readouterr().out).lower()
+
+
+# --------------------------------------------------------------------------- #
+# .env loading: the gemini path must see GEMINI_API_KEY / GEMINI_MODEL
+# without the caller exporting them by hand.
+# --------------------------------------------------------------------------- #
+
+
+class TestDotEnvLoading:
+    def test_dotenv_is_loaded_before_the_gemini_provider_is_built(
+        self, monkeypatch, tmp_path
+    ):
+        """A .env-provided key must reach the provider builder."""
+        import os
+
+        from agents.qa.fact_checker import __main__ as fc_main
+
+        research = _cli_package_path(tmp_path)
+        seen = {}
+
+        def fake_load_dotenv(*_a, **_kw):
+            os.environ["GEMINI_API_KEY"] = "key-from-dotenv"
+            os.environ["GEMINI_MODEL"] = "gemini-3.5-flash-lite"
+            return True
+
+        monkeypatch.setattr(fc_main, "load_dotenv", fake_load_dotenv)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_MODEL", raising=False)
+
+        def builder(args):
+            seen["key"] = os.environ.get("GEMINI_API_KEY")
+            seen["model"] = os.environ.get("GEMINI_MODEL")
+            return _gemini_components()
+
+        monkeypatch.setattr(fc_main, "_build_gemini", builder)
+        _stub_state_save(monkeypatch)
+        _install_argv(
+            monkeypatch,
+            "--provider", "gemini",
+            "--retriever", "firecrawl",
+            "--package", str(research),
+            "--run-id", "fc_cli_env",
+            "--out", str(tmp_path / "fc_env.json"),
+        )
+        assert main() == 0
+        assert seen["key"] == "key-from-dotenv"
+        assert seen["model"] == "gemini-3.5-flash-lite"
+
+    def test_real_load_dotenv_reads_a_repo_style_env_file(self, monkeypatch, tmp_path):
+        """Exercise the real python-dotenv call against a repo-shaped .env."""
+        import os
+
+        from dotenv import load_dotenv as real_load_dotenv
+
+        from agents.qa.fact_checker import __main__ as fc_main
+
+        env_file = tmp_path / ".env"
+        env_file.write_text(
+            "GEMINI_API_KEY=key-read-from-file\n"
+            "GEMINI_MODEL=gemini-3.5-flash-lite\n",
+            encoding="utf-8",
+        )
+        research = _cli_package_path(tmp_path)
+        seen = {}
+
+        monkeypatch.setattr(
+            fc_main, "load_dotenv", lambda *a, **kw: real_load_dotenv(env_file)
+        )
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_MODEL", raising=False)
+
+        def builder(args):
+            seen["key"] = os.environ.get("GEMINI_API_KEY")
+            seen["model"] = os.environ.get("GEMINI_MODEL")
+            return _gemini_components()
+
+        monkeypatch.setattr(fc_main, "_build_gemini", builder)
+        _stub_state_save(monkeypatch)
+        _install_argv(
+            monkeypatch,
+            "--provider", "gemini",
+            "--retriever", "firecrawl",
+            "--package", str(research),
+            "--run-id", "fc_cli_env2",
+            "--out", str(tmp_path / "fc_env2.json"),
+        )
+        assert main() == 0
+        assert seen["key"] == "key-read-from-file"
+        assert seen["model"] == "gemini-3.5-flash-lite"
+
+    def test_explicit_env_var_wins_over_dotenv_file(self, monkeypatch, tmp_path):
+        """load_dotenv must not clobber a value the caller already exported."""
+        import os
+
+        from dotenv import load_dotenv as real_load_dotenv
+
+        from agents.qa.fact_checker import __main__ as fc_main
+
+        env_file = tmp_path / ".env"
+        env_file.write_text("GEMINI_MODEL=model-from-file\n", encoding="utf-8")
+        research = _cli_package_path(tmp_path)
+        seen = {}
+
+        monkeypatch.setattr(
+            fc_main, "load_dotenv", lambda *a, **kw: real_load_dotenv(env_file)
+        )
+        monkeypatch.setenv("GEMINI_MODEL", "model-from-process")
+
+        def builder(args):
+            seen["model"] = os.environ.get("GEMINI_MODEL")
+            return _gemini_components()
+
+        monkeypatch.setattr(fc_main, "_build_gemini", builder)
+        _stub_state_save(monkeypatch)
+        _install_argv(
+            monkeypatch,
+            "--provider", "gemini",
+            "--retriever", "firecrawl",
+            "--package", str(research),
+            "--run-id", "fc_cli_env3",
+            "--out", str(tmp_path / "fc_env3.json"),
+        )
+        assert main() == 0
+        assert seen["model"] == "model-from-process"
+
+    def test_mock_provider_needs_no_dotenv_and_no_key(self, monkeypatch, tmp_path):
+        """The offline default must keep working when dotenv is unavailable."""
+        from agents.qa.fact_checker import __main__ as fc_main
+
+        research = _cli_package_path(tmp_path)
+        monkeypatch.setattr(fc_main, "load_dotenv", None)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        _stub_state_save(monkeypatch)
+        _install_argv(
+            monkeypatch,
+            "--provider", "mock",
+            "--package", str(research),
+            "--run-id", "fc_cli_nodotenv",
+            "--out", str(tmp_path / "fc_nodotenv.json"),
+        )
+        assert main() == 0
+        artifact = _read_result(tmp_path, "fc_nodotenv.json")
+        assert artifact["schema"] == "FactCheckResult"
+        assert artifact["produced_by"]["provider"] == "MockEvidenceProvider"

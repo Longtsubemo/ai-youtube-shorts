@@ -2,41 +2,46 @@
 
 **Status:**
 
-- **Gemini Provider Architecture: IMPLEMENTED for Stages 1, 2 & 4**
+- **Gemini Provider Architecture: IMPLEMENTED for Stages 1, 2, 3 & 4 where applicable**
 - **Stage 1 Gemini (topic selection): IMPLEMENTED**
 - **Stage 2 Gemini Research: IMPLEMENTED** (offline-tested; a real key-gated
   run produced `data/857acc781211-firecrawl-lite/research/research_package.json`)
 - **Stage 2 web retrieval (Firecrawl retriever layer): IMPLEMENTED**
   (a real Firecrawl network run produced `data/857acc781211-firecrawl-lite/`
   locally; the `firecrawl` SDK stays out of `providers/gemini/` tests)
+- **Stage 3 Gemini Fact Checking: IMPLEMENTED** (`GeminiEvidenceProvider` +
+  `GeminiVerifier`; offline-tested and real smoke verification recorded; the
+  deterministic gates remain the final authority)
 - **Stage 4 Gemini Script (`GeminiScriptProvider`): IMPLEMENTED**
   (offline-tested + a real key-gated smoke produced the Stage-4 `Script`
   artifact; deterministic `validate_script_from_package` is the final gate)
-- **Stages 3 & 6 Gemini providers (`GeminiEvidenceProvider`, `GeminiVerifier`,
-  `GeminiScenePlanner`): NOT IMPLEMENTED** (design only; Stage 3 — Fact
-  Checking — is the next implementation target, plan in §L)
+- **Stage 6 `GeminiScenePlanner`: NOT IMPLEMENTED**; Stage 6 remains
+  deterministic/mock-first by design. Stage 5 is deterministic by design.
 
 This document records the inspection/design pass over the existing Stages 1–6
 implementation and the plan for introducing a real Gemini provider
 without breaking the deterministic mock providers, data contracts, provenance,
 tests, or the Stage 1–6 boundaries and determinism.
 
-Stages 1–10 are complete and deterministic (branch `feat/real-gemini-pipeline`,
-HEAD `b0f5f2d`), **1148 tests pass (4 skipped)** on the current working tree
-(HEAD itself: 1133). Stage 11 (YouTube upload)
-remains out of scope.
+Stages 1–10 are complete, with real Gemini/Firecrawl paths implemented for
+Stages 1–4, deterministic/mock-first behavior for Stages 5–7, deterministic QA
+and approval gates for Stages 8–10, and Stage 11 (YouTube upload) not started.
+At the current handoff (branch `feat/real-gemini-pipeline`, HEAD
+`80c9841134d9db3c623bf1b909c4f2752e676980`), the verified full suite is **1257
+passed, 5 skipped**.
 
 The Stage-1 slice of this plan is implemented (see **[H] Implemented —
 Stage 1 slice** below): a reusable `providers/gemini/` layer plus the
 `agents/seo/provider.py` seam, used by Stage 1 (topic selection) via an explicit
-`--provider gemini` CLI opt-in. **Stage 2 (research) is now implemented too**
-(same layer + `agents/research/provider.py` seam; see **[I] Implemented —
-Stage 2 slice** plus **[I₂] Stage 2 — Firecrawl web retrieval layer**), and
-**Stage 4 (script) is implemented** (`agents/script/provider.py` seam +
-`GeminiScriptProvider`; see **[K] Implemented — Stage 4 script slice**),
-leaving Stages 3 and 6 with mock-first defaults; their adapter classes
-(section B) are NOT yet implemented. The default mock paths are byte-for-byte
-unchanged.
+`--provider gemini` CLI opt-in. **Stage 2 (research) is implemented** (same
+layer + `agents/research/provider.py` seam; see **[I] Implemented — Stage 2
+slice** plus **[I₂] Stage 2 — Firecrawl web retrieval layer**), **Stage 3 (fact
+checking) is implemented** (the `GeminiEvidenceProvider` and `GeminiVerifier`
+adapters; see **[L] Implemented — Stage 3 Fact Checking slice**), and **Stage 4
+(script) is implemented** (`agents/script/provider.py` seam +
+`GeminiScriptProvider`; see **[K] Implemented — Stage 4 script slice**). Stage 5
+is deterministic and Stage 6 remains deterministic/mock-first; their default
+mock paths are byte-for-byte unchanged.
 
 ---
 
@@ -137,14 +142,14 @@ validator/gates before the artifact can be persisted.
 |---|---|---|---|---|
 | `GeminiTopicProvider` | `TopicCandidateProvider` | `config/topic_selection.yaml` (pillars, topic types) | `TopicCandidate.validate()` / `run_topic_selection` | **IMPLEMENTED (Stage 1)** |
 | `GeminiResearchProvider` | `ResearchProvider` | `TopicDescriptor` (one topic, one evidence request); grounding metadata is the evidence boundary | `agents/research/` package-building rules (provisional-only claims, dedup, source validation) | **IMPLEMENTED (Stage 2)** |
-| `GeminiEvidenceProvider` | `EvidenceProvider` | `Source`; evidence constrained to the source's own content | `MeaningfulEvidence` / `SUPPORTING_EVIDENCE_TYPES` bounds | NOT IMPLEMENTED |
-| `GeminiVerifier` | `Verifier` | **strictly `{claim, supplied evidence, source metadata}`** — never outside/world knowledge (`agents/qa/fact_checker/verifier.py` docstring); returns `ClaimAssessment` | verdict vocabulary `DIRECT/PARTIAL/INSUFFICIENT/NONE/CONTRADICTORY` | NOT IMPLEMENTED |
+| `GeminiEvidenceProvider` | `EvidenceProvider` | `Source`; evidence constrained to the source's own content | `MeaningfulEvidence` / `SUPPORTING_EVIDENCE_TYPES` bounds | **IMPLEMENTED (Stage 3)** |
+| `GeminiVerifier` | `Verifier` | **strictly `{claim, supplied evidence, source metadata}`** — never outside/world knowledge (`agents/qa/fact_checker/verifier.py` docstring); returns `ClaimAssessment` | verdict vocabulary `DIRECT/PARTIAL/INSUFFICIENT/NONE/CONTRADICTORY` | **IMPLEMENTED (Stage 3)** |
 | `GeminiScriptProvider` | `ScriptProvider` (`agents/script/provider.py`) | `ResearchPackage` — prompt renders ONLY the package's claims (ids + texts + evidence tiers); a line may only cite package claim ids | `validate_script_from_package` (token coverage / no-hallucination / certainty preservation / hedge preservation, deterministic) — final gate, fails closed as `blocked` | **IMPLEMENTED (Stage 4)** |
 | `GeminiScenePlanner` | `ScenePlanner` | `Script` (post Script-QA PASS); returns `ScenePlanningResult` | `validate_production_plan` rules r01–r20 | NOT IMPLEMENTED |
 
-`GeminiTopicProvider`, `GeminiResearchProvider`, and `GeminiScriptProvider`
-exist. `GeminiEvidenceProvider`, `GeminiVerifier`, and `GeminiScenePlanner`
-are **FUTURE / NOT IMPLEMENTED** — do not claim they exist.
+`GeminiTopicProvider`, `GeminiResearchProvider`, `GeminiEvidenceProvider`,
+`GeminiVerifier`, and `GeminiScriptProvider` exist. `GeminiScenePlanner` is
+**FUTURE / NOT IMPLEMENTED**; do not claim it exists.
 
 Constaints honored everywhere:
 
@@ -220,8 +225,10 @@ persisting. Concretely:
 IMPLEMENTED (a real key-gated run produced
 `data/857acc781211-firecrawl-lite/research/research_package.json`); the Stage-2
 Firecrawl web-retrieval layer IS IMPLEMENTED (a real Firecrawl run produced the
-same run dir); Stage 4's `GeminiScriptProvider` IS IMPLEMENTED (see §K).
-Stages 3 and 6 Gemini adapters are design only.**
+same run dir); Stage 3's `GeminiEvidenceProvider` and `GeminiVerifier` ARE
+IMPLEMENTED (see §L); Stage 4's `GeminiScriptProvider` IS IMPLEMENTED (see §K).
+Stage 5 is deterministic and Stage 6 keeps its deterministic/mock-first default;
+`GeminiScenePlanner` is design-only.**
 Implemented files for the Stage-1 slice:
 `providers/gemini/` + `agents/seo/provider.py` +
 `prompts/seo/topic_candidates-v1.txt` + offline tests. Implemented files for the
@@ -231,12 +238,13 @@ Stage-2 slice: `providers/gemini/research_provider.py` + `generate_research` in
 + offline tests. Implemented for the Stage-2 Firecrawl slice:
 `providers/firecrawl/` + `agents/research/retriever.py` + `retriever`
 param/`--retriever firecrawl` wiring +
-`prompts/research/facts-retrieval-v1.txt` + offline tests. Default paths stay
-`None → Mock*`; the mock runner, contracts, provenance schemes, and ID rules are
-unchanged; the full suite (1148 passed, 4 skipped on the working tree; 1133 at
-HEAD) is green. Stage 4's
-`GeminiScriptProvider` is implemented (section K); Stages 3 and 6 keep
-mock-first defaults.
+`prompts/research/facts-retrieval-v1.txt` + offline tests. Implemented for
+Stage 3: `providers/gemini/evidence_provider.py` +
+`providers/gemini/verifier_provider.py` + the fact-check provider factory,
+Firecrawl verification retrieval, CLI opt-in, and offline tests. Default paths
+stay `None → Mock*`; the mock runner, contracts, provenance schemes, and ID
+rules are unchanged. The current verified full suite is **1257 passed, 5
+skipped**; Stages 5 and 6 keep mock-first defaults.
 
 ---
 
@@ -281,7 +289,10 @@ Key leak safety: the API key never appears in repr, exception text, redacted
 metadata, or artifacts — enforced by `test_gemini_security.py` and covered in
 the CLI gemini-path tests.
 
-## H₂. Adoption checklist (remaining — Stages 2–6)
+## H₂. Historical adoption checklist (pre-Stage-3 snapshot)
+
+> This checklist preserves the pre-Stage-3 implementation plan. Stage 3 is
+> complete as recorded in §L; Stage 6 remains deterministic/mock-first.
 
 1. Decide whether a generic `ModelProvider` / `ModelRequest` / `ModelResponse`
    gateway (`MODEL_STRATEGY.md` §2) is worth introducing; Stage 1 used the
@@ -291,8 +302,9 @@ the CLI gemini-path tests.
    lazy import, `.env` `GEMINI_API_KEY`, already done for Stage 1.
 3. Add the remaining stage adapters behind the existing protocols; Stage 1's
    `GeminiTopicProvider` is done and **Stage 2's `GeminiResearchProvider` is now
-   implemented (this branch, offline-tested)**. **Next: Stage 3's
-   `GeminiEvidenceProvider` (behind `EvidenceProvider`) only** — not Stages 4/6.
+    implemented (this branch, offline-tested)**. **At that snapshot, the next
+    target was Stage 3's `GeminiEvidenceProvider` (behind `EvidenceProvider`)
+    only** — not Stages 4/6.
 4. Add `providers/gemini/builders.py`-style factories + CLI/env opt-in
    (`--provider gemini`); defaults unchanged (Stage 1 factory lives in
    `agents/seo/provider.py`).
@@ -388,6 +400,13 @@ retriever the flow above is exactly what runs.
 - **Gemini is a research/retrieval ASSISTANT, NOT the factual authority.**
 - Search-grounded source metadata must be retained.
 - **Do not fabricate URLs or sources** — evidence boundary drop (see above).
+- **Multi-source claims are declared, never inferred.** The structured schema
+  carries `also_supported_by` (URLs), and the evidence boundary applies to it
+  exactly as it applies to a proposed source: a declared supporting URL that
+  retrieval did not return is dropped, and one the agent cannot resolve inside
+  the package is a hard error. Sources are never auto-attached to a claim that
+  did not declare them. Duplicate `source_ids` are rejected. This is what
+  allows a critical claim to reach Stage 3's unchanged corroboration gate.
 - Claims returned by research remain **provisional**.
 - **Stage 3 performs factual verification**; it remains the factual gate.
 - Evidence must be tied to actual retrieved sources (grounding metadata / URLs
@@ -414,10 +433,11 @@ retriever the flow above is exactly what runs.
 
 ## I₂. Implemented — Stage 2 Firecrawl web retrieval layer
 
-**Status: IMPLEMENTED** (this branch, offline-tested and wiring-complete; the
-real Firecrawl network run is NOT performed and gated by
-`FIRECRAWL_INTEGRATION_TESTS=1` — the `firecrawl` SDK is not installed in this
-environment).
+**Status: IMPLEMENTED** (this branch, offline-tested and wiring-complete; a real
+Firecrawl network verification completed on 2026-09-23. The Gemini leg of the
+end-to-end CLI smoke was blocked by Google-side throttling, as recorded below;
+the `firecrawl` SDK remains isolated from the provider tests and the real-network
+integration test is gated by `FIRECRAWL_INTEGRATION_TESTS=1`).
 
 ### Flow (retrieval variant)
 
@@ -549,8 +569,8 @@ metadata.
    (`seo/topic_candidates-v1` is the Stage-1 precedent).
 5. RESOLVED (vs. previously open): Gemini Search grounding is the selected first
    retrieval mechanism for research; sources remain the authority — the model
-   proposes, never the fact authority. Stage-3 eligibility for grounding stays
-   open until Stage 3 is implemented.
+   proposes, never the fact authority. Stage 3 was subsequently implemented with
+   retrieval-grounded evidence and deterministic gates as the final authority.
 
 ## K. Implemented — Stage 4 script slice (GeminiScriptProvider)
 
@@ -685,3 +705,15 @@ Implementation notes (mirroring the Stage-1/2/4 slices):
   (`GEMINI_MODEL=gemini-3.5-flash-lite`, `--retriever firecrawl`); the
   discovery-tier sources produced the honest expected outcome
   (package `REJECT`, no invented evidence, no secret leakage).
+
+## Current checkpoint — end of session
+
+- Branch: `feat/real-gemini-pipeline`
+- HEAD: `80c9841134d9db3c623bf1b909c4f2752e676980` — `feat: complete human approval stage` (unchanged; nothing committed since).
+- Stages 1–4 have implemented Gemini paths, with real run/smoke verification recorded; Stage 5 is deterministic and Stage 6 remains deterministic/mock-first.
+- Stages 7–10 are complete; Stage 11+ is not started.
+- **Uncommitted (working tree NOT clean):** a Stage-2 multi-source claim-binding fix plus the Stage-4 `FactCheckResult` binding work, their tests, prompt/contract doc updates, and `docs/E2E_REAL_PIPELINE_REPORT.md`. Latest verification: **full suite 1318 passed, 5 skipped**; `git diff --check` clean.
+- **Stage-2 multi-source claim binding (new, offline-verified only):** the provider's structured-output schema gained `also_supported_by`, so Gemini can declare additional supporting URLs. Only URLs that retrieval actually returned survive the provider's evidence gate; the agent resolves them to real source ids (primary first, de-duplicated), rejects unresolvable declarations, and `FactClaim.validate()` now rejects duplicate `source_ids`. **Stage 3's corroboration threshold is unchanged.** See `docs/PROJECT_PROGRESS.md` → "Current continuity checkpoint — Stage 2 multi-source fix".
+- **No real Gemini/Firecrawl run has been executed since that fix.** The real run `e2e-20260930-002` (Stage 3 `REVIEW`, Stage 4 correctly blocked, no `script.json`) is preserved as historical evidence from **before** the fix.
+- **NEXT TASK:** a fresh real Stage 1 → 4 E2E run on a **NEW** `run_id` with real Gemini + real Firecrawl and no mock providers, to determine whether the Stage-2 fix lets Stage 3 clear corroboration and Stage 4 emit a real `script.json`. Do **not** reuse `e2e-20260930-002`, and do not claim the real path works until that run happens.
+- See `docs/PROJECT_PROGRESS.md` for the authoritative continuity checkpoint, preserved real artifacts, and handoff constraints.

@@ -117,8 +117,10 @@ script QA, fact check), each bound by stable id + canonical `content_sha256`
 digest, decisions `APPROVED / CHANGES_REQUESTED / REJECTED / PENDING`, a
 fail-closed APPROVED (all hard gates clear, PENDING never writable), soft
 REVIEW-only overrides, digest-based staleness checks, and supersede chaining.
-It advances run state to the existing generic `Stage.PUBLISH` and marks the
-package `manual_upload.ready` — Stage 10 performs NO upload. Design:
+An APPROVED decision advances run state to the existing generic
+`Stage.PUBLISH`; non-approved decisions remain at `Stage.QUALITY_CHECK`. The
+package is marked `manual_upload.ready` only for an approved decision — Stage 10
+performs NO upload. Design:
 `docs/HUMAN_APPROVAL_STAGE10_DESIGN.md`; contract: `docs/DATA_CONTRACTS.md`
 §12.
 
@@ -165,11 +167,11 @@ writes `production.json` and waits for a worker result.
 8. Analytics collection and feedback into topic selection
 9. Scheduling
 
-Implementation status as of the Stage-10 checkpoint: items 1–7 are fully
-implemented through the human approval gate (Stages 1–10) with mock-first,
-offline, deterministic providers; the real Colab GPU worker, audio/subtitles/
-assembly, YouTube publishing (Stage 11), analytics, and scheduling remain
-future work.
+Implementation status as of the Stage-10 checkpoint: items 1–7 are implemented
+through the human approval gate (Stages 1–10). Stages 1–4 have opt-in real
+Gemini/Firecrawl paths; Stages 5–10 are deterministic/mock-first. The real
+Colab GPU worker, audio/subtitles/assembly, YouTube publishing (Stage 11),
+analytics, and scheduling remain future work.
 
 ## 9. Open decisions
 

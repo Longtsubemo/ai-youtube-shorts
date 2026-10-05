@@ -1,0 +1,106 @@
+# SearXNG settings for the isolated retrieval experiment (experiments/retrieval).
+#
+# This is a LOCAL-DEVELOPMENT override only. It inherits the packaged SearXNG
+# defaults (`use_default_settings: true`) and changes the smallest possible set
+# of keys to make the instance scriptable and repeatable:
+#
+#   1. `search.formats` - SearXNG ships with the JSON API DISABLED
+#      (`formats: [html]`). A programmatic client cannot consume results
+#      without this, so `json` is added here. Nothing else is exposed.
+#   2. `search.default_lang` - the packaged default is "auto", which resolves
+#      from the request's Accept-Language header and therefore returns
+#      different results on different machines. Pinned to "en" so the
+#      experiment is reproducible.
+#   3. `search.autocomplete` - blanked so SearXNG makes no extra outbound
+#      autocomplete calls during a search.
+#   4. `server.limiter` / `server.public_instance` - this instance is bound to
+#      127.0.0.1 and exists only to serve local experiments, so bot rate
+#      limiting and public-instance behaviour stay off.
+#   5. `engines` - SEE THE LONG BLOCK BELOW. This is the one that matters.
+#
+# NOTE ON secret_key: the value below is a THROWAWAY randomly generated for
+# this localhost-only container. It is not a real credential, it is not used
+# anywhere else, and it must never be reused or exposed beyond 127.0.0.1.
+use_default_settings: true
+
+general:
+  debug: false
+  instance_name: "ai-youtube-channel retrieval experiment"
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "en"
+  formats:
+    - html
+    - json
+
+server:
+  bind_address: "0.0.0.0"
+  port: 8080
+  limiter: false
+  public_instance: false
+  image_proxy: false
+  secret_key: "5e1357095b4b418508bb6748199793746f1686098f460ce2"
+
+outgoing:
+  request_timeout: 10.0
+  max_request_timeout: 20.0
+  pool_connections: 20
+  pool_maxsize: 10
+
+ui:
+  static_use_hash: true
+
+# ---------------------------------------------------------------------------
+# 5. ENGINES - the difference between "works" and "returns nothing".
+#
+# WHAT WAS WRONG. `use_default_settings: true` leaves SearXNG's packaged
+# default engine selection in place, and in the `general` category that set is
+# only nine engines: wikipedia, wikidata, duckduckgo, google cse, brave, and
+# four translation/dictionary lookups. The only three real *web search* engines
+# in it are duckduckgo, google cse and brave, and from this host all three fail:
+#
+#     brave       -> Suspended: too many requests
+#     duckduckgo  -> CAPTCHA
+#     google cse  -> Suspended: too many requests
+#
+# `wikipedia` and `wikidata` answer, but they are entity-lookup engines, not
+# full-text web search: they return 0 results for a natural-language question
+# such as "Hawking radiation mechanism". So EVERY query came back with
+# `results=0`, and the retriever correctly reported zero sources. The stack was
+# healthy; it simply had no working web-search engine at all.
+#
+# WHAT IS DONE. Every engine below was enabled by SearXNG's packaging but was
+# switched OFF by default, and every one was then verified individually against
+# this host over three real factual queries ("quantum entanglement explained",
+# "Hawking radiation mechanism", "CRISPR gene editing how it works") before
+# being enabled here. Nothing was added on faith and nothing was invented:
+#
+#     bing    10 results x3   wikipedia / britannica / nasa.gov / libretexts
+#     google  10 results x3   nature.com / nasa.gov / broadinstitute / medlineplus
+#     yahoo    7 results x3   same editorial quality as bing
+#     yep     20 results x3   arxiv.org / britannica / frontiersin / springer / mdpi
+#
+# `duckduckgo`, `brave` and `google cse` are deliberately LEFT ENABLED. Their
+# failures are transient upstream rate-limiting and CAPTCHA challenges, not
+# configuration errors, so they keep working again once upstream cools off and
+# they add redundancy until they do. If they are suspended, the reason is
+# reported honestly in `unresponsive_engines` rather than hidden.
+#
+# The `science` / `scientific publications` category is already enabled by
+# SearXNG's defaults and was verified working here as well (google scholar,
+# pubmed, arxiv, europepmc, semantic scholar all returned results on all three
+# queries). Those are peer-reviewed sources, which is what gives Stage 3
+# corroboration something real to work with, so the retriever asks for
+# `general,science`. See providers/searxng/client.py.
+# ---------------------------------------------------------------------------
+engines:
+  - name: bing
+    disabled: false
+  - name: google
+    disabled: false
+  - name: yahoo
+    disabled: false
+  - name: yep
+    disabled: false

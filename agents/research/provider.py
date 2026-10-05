@@ -45,12 +45,19 @@ class ClaimItem:
 
     The provider returns claim *candidates*; the agent decides the final
     claim (classification, confidence, id, verification status).
+
+    `also_supported_by_urls` lets a provider declare that OTHER retrieved
+    pages support this same claim, so the agent can bind one claim to
+    several sources. URLs only - ids, so the agent can resolve them against
+    the sources it actually built and reject anything it cannot trace. Empty
+    (the default) means single-source, exactly as before.
     """
 
     claim_text: str
     dates: tuple[dict, ...] = ()
     suggested_claim_type: str | None = None
     critical: bool = False
+    also_supported_by_urls: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -207,8 +214,10 @@ def build_research_provider(
     GeminiConfigurationError rather than silently failing over to mock.
 
     `retriever` selects real web retrieval for the gemini provider:
-    `"firecrawl"` builds a FirecrawlResearchRetriever (keyless-capable). No
-    other provider accepts a retriever.
+    `"firecrawl"` builds a FirecrawlResearchRetriever (keyless-capable) and
+    `"hybrid"` builds a HybridResearchRetriever (SearXNG discovery, BeautifulSoup
+    fetch, bounded self-hosted Firecrawl fallback). No other provider accepts a
+    retriever.
     """
     if name in (None, "", "mock"):
         if retriever is not None:
@@ -230,6 +239,16 @@ def build_research_provider(
 
             firecrawl_config = FirecrawlConfig.from_env(env if env is not None else os.environ)
             built_retriever = FirecrawlResearchRetriever(config=firecrawl_config)
+        elif retriever == "hybrid":
+            from providers.firecrawl.config import FirecrawlConfig
+            from providers.hybrid.retriever import HybridResearchRetriever
+
+            # SearXNG for discovery, BeautifulSoup for the cheap tier, and
+            # self-hosted Firecrawl only as a bounded fallback. Config is read
+            # from the same env as the firecrawl retriever so a run can point
+            # FIRECRAWL_API_URL at a self-hosted instance.
+            firecrawl_config = FirecrawlConfig.from_env(env if env is not None else os.environ)
+            built_retriever = HybridResearchRetriever(firecrawl_config=firecrawl_config)
         elif retriever is not None:
             raise ResearchProviderError(f"unknown retriever: {retriever!r}")
 

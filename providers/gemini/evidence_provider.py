@@ -18,8 +18,8 @@ Evidence boundary:
 - The model never proposes URLs, source ids, or sources. `Evidence.source_id`
   is bound to the package source being verified; `locator` and `notes` are the
   only free text fields, and neither is a URL.
-- Every excerpt must be a verbatim (whitespace-normalized) substring of the
-  retrieved content; anything else is model fabrication and is dropped.
+- Every excerpt must be a verbatim (whitespace/markdown-normalized) substring
+  of the retrieved content; anything else is model fabrication and is dropped.
 - If the source's own URL is not among the retrieved pages, or no retriever is
   configured, the provider returns no evidence (honest `insufficient` ->
   REVIEW) and never calls the model.
@@ -30,6 +30,7 @@ Evidence boundary:
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
@@ -37,7 +38,8 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, Field
 
 from agents.qa.fact_checker.models import Evidence, evidence_id_for
-from agents.research.models import Source
+from agents.qa.fact_checker.recovery import find_near_verbatim
+from agents.research.models import FactClaim, Source
 from agents.research.provider import TopicDescriptor
 from agents.research.retriever import ResearchRetriever
 from providers.gemini.client import GeminiClient
@@ -56,6 +58,11 @@ _SYSTEM_PROMPT = (
 )
 
 EVIDENCE_NOTE_PREFIX = "Gemini-extracted from retrieved web content (verbatim; not invented)."
+RECOVERY_NOTE_PREFIX = (
+    "Deterministically recovered from retrieved web content "
+    "(verbatim near-verbatim restatement; not invented)."
+)
+RECOVERY_LOCATOR_PREFIX = "deterministic-recovery"
 
 
 class _EvidenceExcerptSchema(BaseModel):
@@ -100,14 +107,46 @@ def _normalize_url(url: str) -> str:
         return ""
 
 
+_MARKDOWN_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+# The label may contain escaped brackets (Wikipedia footnote refs: `[\[1\]](url)`),
+# so the label body accepts `\[` / `\]` escapes rather than a bare `]`.
+_MARKDOWN_LINK = re.compile(r"\[((?:[^\]\\]|\\.)*)\]\([^)]*\)")
+_MARKDOWN_EMPHASIS = re.compile(r"(\*{1,3}|_{1,3})(\S(?:.*?\S)?)\1", re.DOTALL)
+_MARKDOWN_ESCAPED_BRACKET = re.compile(r"\\([\[\]])")
+_MARKDOWN_HEADING = re.compile(r"^\s{0,3}#{1,6}\s+", re.MULTILINE)
+_MARKDOWN_BULLET = re.compile(r"^\s*[-*+]\s+", re.MULTILINE)
+
+
+def _strip_markdown(text: str) -> str:
+    """Render markdown markup down to the prose a reader actually sees.
+
+    Retrieved pages arrive as markdown, but a model quoting "verbatim" text
+    reproduces the rendered prose (it does not re-emit `[label](url)` link
+    syntax or `**bold**` markers). Comparing a rendered excerpt against raw
+    markdown source therefore fails on pages that are heavily linked, even
+    though the words are genuinely present. Stripping markup on BOTH sides
+    keeps the containment check strictly word-for-word while comparing the
+    same representation: no word is added, reordered, or removed, so
+    fabricated text still cannot pass.
+    """
+    text = _MARKDOWN_IMAGE.sub(" ", text)
+    text = _MARKDOWN_LINK.sub(r"\1", text)
+    text = _MARKDOWN_ESCAPED_BRACKET.sub(r"\1", text)
+    text = _MARKDOWN_HEADING.sub("", text)
+    text = _MARKDOWN_BULLET.sub("", text)
+    text = _MARKDOWN_EMPHASIS.sub(r"\2", text)
+    return text
+
+
 def _normalize_whitespace(text: str) -> str:
     """Lowercase/collapse whitespace and strip edge punctuation before matching.
 
-    Both sides are normalized the same way, so a verbatim excerpt that differs
-    only in edge punctuation (a trailing '.', ':', '...') still counts as
-    grounded text — but interior words/punctuation must match exactly.
+    Both sides are normalized the same way (including markdown markup), so a
+    verbatim excerpt that differs only in markup or edge punctuation (a trailing
+    '.', ':', '...') still counts as grounded text — but interior words and
+    punctuation must match exactly.
     """
-    collapsed = " ".join(text.strip().lower().split())
+    collapsed = " ".join(_strip_markdown(text).strip().lower().split())
     return collapsed.strip(" .,;:!?\"'()[]{}\u2013\u2014")
 
 
@@ -128,6 +167,11 @@ class GeminiEvidenceProvider:
         self._prompt_path = Path(prompt_path)
         self._retriever = retriever
         self._max_evidence_per_source = max_evidence_per_source
+        # Retrieved content cached during get_evidence, keyed by source_id.
+        # The deterministic backstop reads from here only: recovery must reuse
+        # text that was ALREADY retrieved for this source and must never issue
+        # a new retrieval, a new search, or a new model call.
+        self._content_cache: dict[str, list[str]] = {}
 
     # -- metadata --------------------------------------------------------- #
 
@@ -179,6 +223,10 @@ class GeminiEvidenceProvider:
         if not matched:
             return []
 
+        self._content_cache[source.source_id] = [
+            item.content for item in matched if (item.content or "").strip()
+        ]
+
         prompt = self._render_prompt(source, matched)
         extracted = self._client.generate_structured(
             prompt,
@@ -186,6 +234,58 @@ class GeminiEvidenceProvider:
             system_prompt=_SYSTEM_PROMPT,
         )
         return self._map_evidence(source, extracted.excerpts, matched)
+
+    # -- deterministic recall backstop ------------------------------------ #
+
+    def recover_evidence(self, source: Source, claim: FactClaim) -> list[Evidence]:
+        """Recover a near-verbatim restatement of `claim` from retrieved text.
+
+        The recall backstop for the claim-blind extractor. `get_evidence` cannot
+        know which sentence matters for a given claim, so a source whose
+        supporting sentence simply was not selected is indistinguishable from a
+        source that does not support the claim at all - which forces an honest
+        but unhelpful REVIEW.
+
+        Guarantees, in order:
+
+        1. Operates only on content already retrieved for THIS source; no
+           retrieval, no search, no model call (see `_content_cache`).
+        2. Returns at most one candidate, and only a genuine near-verbatim
+           restatement (order-preserving token match plus a contiguous run).
+        3. The excerpt is a span of the retrieved content and must pass the same
+           `_grounded` verbatim containment check the model-extracted excerpts
+           pass. Nothing is reworded.
+        4. `source_id` is bound to `source` - recovery cannot introduce a source.
+        5. `evidence_type` is always `direct_statement`; recovery never claims
+           context, contradiction, or insufficiency, which only the extractor
+           and the verifier may assert.
+        6. The id is the normal deterministic `evidence_id_for`, so a repeat
+           call is idempotent and de-duplicates against existing evidence.
+        7. The result is ordinary `Evidence`. It still has to be credited by the
+           verifier and pass the gates; recovery never grants support itself.
+
+        Returns `[]` when nothing qualifies, so behavior is unchanged whenever
+        the extractor already did its job.
+        """
+        contents = self._content_cache.get(source.source_id, [])
+        if not contents:
+            return []
+        excerpt = find_near_verbatim(claim.claim_text, "\n\n".join(contents))
+        if not excerpt:
+            return []
+        if not self._grounded(excerpt, contents):
+            return []
+        return [
+            Evidence(
+                evidence_id=evidence_id_for(source.source_id, excerpt),
+                source_id=source.source_id,
+                excerpt=excerpt,
+                locator=f"{RECOVERY_LOCATOR_PREFIX}: near-verbatim sentence in retrieved content",
+                evidence_type="direct_statement",
+                retrieved_at=source.retrieved_at,
+                notes=RECOVERY_NOTE_PREFIX,
+            ).validate()
+        ]
 
     # -- internals --------------------------------------------------------- #
 
@@ -206,8 +306,8 @@ class GeminiEvidenceProvider:
         """Bind grounded, validated model excerpts to `source`.
 
         Deterministic rules applied after the Pydantic schema gate:
-        - excerpt must appear verbatim (whitespace-normalized) in one of the
-          retrieved page contents, otherwise it is dropped (never evidence);
+        - excerpt must appear verbatim (whitespace/markdown-normalized) in one of
+          the retrieved page contents, otherwise it is dropped (never evidence);
         - excerpts are deduplicated by evidence_id;
         - output is bounded by `max_evidence_per_source`.
         """
@@ -242,7 +342,11 @@ class GeminiEvidenceProvider:
 
     @staticmethod
     def _grounded(excerpt: str, contents: list[str]) -> bool:
-        """Excerpt must be a verbatim substring of some retrieved content."""
+        """Excerpt must be a verbatim substring of some retrieved content.
+
+        Both sides pass through the same markdown/whitespace normalization, so
+        rendered prose is compared against rendered prose.
+        """
         needle = _normalize_whitespace(excerpt)
         if not needle:
             return False

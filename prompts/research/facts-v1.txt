@@ -57,6 +57,13 @@ Return at most {max_sources} grounded sources. For each source:
    - `suggested_claim_type` — one of fact / inference / explanation /
      speculation / opinion (or omit and the downstream classifier decides).
    - `critical` — true only for claims the video's argument depends on.
+   - `also_supported_by` — URLs that grounding actually returned and that
+     support this SAME claim independently, so a claim can be corroborated
+     by more than one source. Copy those URLs exactly as returned and only
+     list a page whose content genuinely backs this claim. Omit or leave
+     empty when no other returned page supports it. Never list a URL
+     grounding did not return, and never list a page merely because it is
+     on the same topic.
 
 Only attach claims a source genuinely supports. Fewer grounded claims are
 better than invented ones.
@@ -81,7 +88,8 @@ no code fences):
           "claim_text": "<one sentence the source supports>",
           "dates": [{"date_kind": "publication_date", "date": "YYYY-MM-DD"}],
           "suggested_claim_type": "fact",
-          "critical": false
+          "critical": false,
+          "also_supported_by": ["<another grounding URL supporting the same claim>"]
         }
       ]
     }

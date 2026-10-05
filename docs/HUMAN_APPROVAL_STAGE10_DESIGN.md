@@ -3,15 +3,16 @@
 **Status:** IMPLEMENTED in `agents/human_approval/` (Stage 10 complete).
 
 This document records the Stage-10 research/design pass and the implemented
-contract over the current repository (Stages 1–9 complete). Stage 11 (YouTube
-upload) is intentionally out of scope; the project goal is a manual-upload-ready
-video package.
+contract over the current repository (Stages 1–10 complete; Stages 1–4 have
+opt-in real provider paths, while Stages 5–10 are deterministic/mock-first).
+Stage 11 (YouTube upload) is intentionally out of scope; the project goal is a
+manual-upload-ready video package.
 
 ---
 
 ## A. Current architecture understanding
 
-**Pipeline stages 1–9 are complete and deterministic.** All stages communicate
+**Pipeline stages 1–10 are complete.** All stages communicate
 only via file-based, versioned JSON contracts under `data/<run_id>/` (envelope
 header + `data` payload, `docs/DATA_CONTRACTS.md` §1). Every artifact is
 self-describing with `schema`, `schema_version`, `created_at`, `run_id`,
@@ -24,7 +25,9 @@ self-describing with `schema`, `schema_version`, `created_at`, `run_id`,
   **Stage 7** `VideoGenerationResult` (`vg_…`, mock artifacts, `mock=True`, empty
   `uri`), **Stage 8** `VideoQAResult` (`qa_…`, `target_ref`=plan id, 15 checks;
   hard→REJECT / soft→REVIEW), **Stage 9** `PolicyQAResult` (`pr_…`, 15 rules
-  P01–P15; same gate model; explicitly *not* a platform-compliance guarantee).
+  P01–P15; same gate model; explicitly *not* a platform-compliance guarantee),
+  **Stage 10** `HumanApprovalResult` (`ha_…`; explicit human decision bound to
+  reviewed artifact digests; manual-upload readiness).
 - Gate aggregation everywhere: **hard ERROR → REJECT, soft ERROR → REVIEW
   (REVISE at Stage 5), clean → PASS**; gates only make things worse, never
   upgrade (`PASS < REVIEW < REJECT`).
@@ -33,14 +36,15 @@ self-describing with `schema`, `schema_version`, `created_at`, `run_id`,
   never silently become a policy PASS.
 - Media bytes do not exist yet (mock-first): QA results are permission-
   metadata/contract-level checks.
-- Pipeline state (`pipeline/state.py`) has a `Stage` enum with **no
-  human-approval member**. Stages 8/9 deliberately advance state to the
-  existing generic `Stage.QUALITY_CHECK` (`STATE_STAGE` constant; decisions
-  #16/#17 in PROJECT_PROGRESS) — no enum member is ever added/renamed for QA
-  stages.
-- High-level pipeline direction: `Human Approval` already exists as a diagram
-  item (`docs/PROJECT_PROGRESS.md`, `docs/ARCHITECTURE.md`,
-  `docs/POLICY_AND_SAFETY.md`).
+- Pipeline state (`pipeline/state.py`) has no dedicated human-approval enum
+  member. Stages 8/9 deliberately advance state to the existing generic
+  `Stage.QUALITY_CHECK`; an APPROVED Stage-10 decision advances to the existing
+  generic `Stage.PUBLISH`, while non-approved decisions remain at
+  `Stage.QUALITY_CHECK` (`STATE_STAGE`; decisions #16/#17 in PROJECT_PROGRESS).
+  No enum member is added or renamed.
+- High-level pipeline direction: `Human Approval` is the implemented Stage-10
+  gate before the out-of-scope YouTube stage (`docs/PROJECT_PROGRESS.md`,
+  `docs/ARCHITECTURE.md`, `docs/POLICY_AND_SAFETY.md`).
 
 ## B. Stage-10 purpose
 
@@ -335,8 +339,11 @@ upload) remains out of scope.
 
 ## Final checks
 
-- **Focused Stage 10 tests:** `141 passed` with
+- **Focused Stage 10 tests:** **141 passed** with
   `python -m pytest -q tests/test_human_approval_models.py tests/test_human_approval_validator.py tests/test_human_approval_stage.py tests/test_human_approval_safety.py`.
-- **Full suite:** rerun after the final documentation and code changes.
-- **Git:** no commit made; `docs/PROJECT_PROGRESS.md` retains its pre-existing
-  working-tree changes.
+- **Full suite:** **1257 passed, 5 skipped** (`python -m pytest tests -q`).
+- **Compilation:** `python -m compileall -q agents tests` passed.
+- **Git:** the Stage 10 implementation is committed at
+  `80c9841134d9db3c623bf1b909c4f2752e676980`
+  (`feat: complete human approval stage`); this documentation-only checkpoint
+  is intentionally uncommitted and changes no source or test files.

@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Protocol
 
 from agents.qa.fact_checker.models import Evidence, FactCheckError, evidence_id_for
-from agents.research.models import Source
+from agents.research.models import FactClaim, Source
 
 DEFAULT_EVIDENCE_DATA_PATH = Path("data") / "mock" / "fact_check_evidence.json"
 
@@ -36,6 +36,24 @@ class EvidenceProvider(Protocol):
     """Anything that can return evidence content for a single source."""
 
     def get_evidence(self, source: Source) -> list[Evidence]: ...
+
+
+class EvidenceRecoverer(Protocol):
+    """Optional claim-aware recall backstop for an evidence provider.
+
+    `get_evidence` is claim-blind: it returns whatever excerpts the extractor
+    chose, so a source whose supporting sentence was simply not selected looks
+    exactly like a source that does not support the claim. A provider that also
+    holds the retrieved content can implement this to recover a near-verbatim
+    restatement of a specific claim from text it already has.
+
+    Implementations MUST NOT retrieve new content, search for new sources, call
+    a model, change a source tier, or return evidence bound to any source other
+    than the one passed in. Recovered evidence is ordinary `Evidence`: it is
+    still credited only by the verifier and still faces the full gates.
+    """
+
+    def recover_evidence(self, source: Source, claim: FactClaim) -> list[Evidence]: ...
 
 
 def _normalize(text: str) -> str:

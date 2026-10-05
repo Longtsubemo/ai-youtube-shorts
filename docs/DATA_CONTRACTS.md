@@ -284,6 +284,15 @@ one selected topic, plus provenance and status. Full envelope + `data`:
   Every claim's `source_ids` must resolve to a source in `sources`; the
   package validates this and rejects dangling references (this is the basis
   of the §8 script audit chain).
+- A claim may cite **one or more** sources. `source_ids` is ordered, primary
+  source first, and entries must be unique: a repeated `source_id` is
+  rejected rather than stored. When the research provider declares that
+  another retrieved page supports the same claim, the agent resolves that
+  URL to a real source id in the same package; a declared URL that does not
+  resolve is a hard error, never a silently dropped or invented id. Sources
+  are never auto-attached to a claim that did not declare them.
+  A multi-source claim is what lets §8's critical-claim corroboration gate
+  reach its required two independent sources.
 - `research_notes` are human/audit-readable strings; `provenance` records
   which agent/provider produced the package.
 - `package_id` is `rp_<uuid[:12]>`. The package and all research artifacts

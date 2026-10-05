@@ -7,6 +7,14 @@ result. The deterministic validator is the final gate for every provider, so
 neither the mock nor a real (Gemini) provider can publish a script that
 invents, strengthens, or drops hedges.
 
+For the full pipeline a provider is additionally BOUND to the Stage-3
+`FactCheckResult` by passing `fact_check_result` to `generate()`. That binds
+the Script's `result_id` to the result, restricts the working set to
+`approved_claims` (rejected / REVIEW / unknown claims can never become factual
+script material), and swaps the final gate to `validate_script`. Omitting it is
+the isolated preview path: the whole package is the working set and
+`result_id` stays empty, which the CLI only allows behind an explicit opt-in.
+
 A real implementation (e.g. `GeminiScriptProvider` in `providers/gemini/`)
 drops in behind the same protocol without touching the stage logic. The mock
 provider serves deterministic planning only; it makes no network requests.
@@ -18,8 +26,9 @@ import os
 from pathlib import Path
 from typing import Mapping, Protocol
 
+from agents.qa.fact_checker.models import FactCheckResult
 from agents.research.models import FactClaim, ResearchPackage
-from agents.script.models import PRODUCED_BY, Script, ScriptLine, line_id_for, script_id_for
+from agents.script.models import PRODUCED_BY, Script, ScriptError, ScriptLine, line_id_for, script_id_for
 from agents.script.script_generator import (
     STATUS_BLOCKED,
     STATUS_GENERATED,
@@ -28,7 +37,8 @@ from agents.script.script_generator import (
     ScriptConfig,
     ScriptGenerationResult,
 )
-from agents.script.validator import validate_script_from_package
+from agents.script.stage import approved_claims, bind_fact_check_result, fact_check_gate
+from agents.script.validator import validate_script, validate_script_from_package
 from agents.seo.models import Provenance, utc_now
 
 
@@ -39,10 +49,15 @@ class ScriptProviderError(ValueError):
 class ScriptProvider(Protocol):
     """Anything that can turn a ResearchPackage into a validated Script.
 
-    The provider consumes ONLY the claims in the package and must obey the
+    The provider consumes ONLY the claims it is handed and must obey the
     same deterministic bounds a mock does: no invented facts, no strengthened
-    certainty, preserved hedges, claim_refs that all resolve to package
-    claims, and a script that passes `validate_script_from_package`.
+    certainty, preserved hedges, claim_refs that all resolve to real claims,
+    and a script that passes the deterministic validator.
+
+    Pass `fact_check_result` for full-pipeline execution: the provider then
+    treats `result.approved_claims` as the ONLY permissible factual material
+    and binds `Script.result_id` to `result.result_id`. Leave it `None` only
+    for isolated preview runs, where the whole package is the working set.
     """
 
     def generate(
@@ -51,6 +66,7 @@ class ScriptProvider(Protocol):
         config: ScriptConfig | None = None,
         run_id: str = "",
         created_at: str = "",
+        fact_check_result: FactCheckResult | None = None,
     ) -> ScriptGenerationResult: ...
 
 
@@ -58,11 +74,13 @@ class MockScriptProvider:
     """Deterministic, network-free script provider over a ResearchPackage.
 
     Uses the same planning logic as `MockScriptGenerator`: every factual line
-    is a (near) verbatim package claim, framing lines are inert boilerplate,
-    and the deterministic package validator is the final gate. Without a
-    fact-check result there is no approved/rejected split, so the whole
-    package claim set is the working set and `unused_approved_claim_ids` holds
-    the package claims the script left out.
+    is a (near) verbatim claim, framing lines are inert boilerplate, and a
+    deterministic validator is the final gate.
+
+    With no `fact_check_result` the whole package claim set is the working set
+    and `unused_approved_claim_ids` holds the package claims the script left
+    out. With one, the working set narrows to `approved_claims` exactly as the
+    Gemini provider does, so the two paths cannot diverge on the gate.
     """
 
     def __init__(self, config: ScriptConfig | None = None) -> None:
@@ -75,10 +93,21 @@ class MockScriptProvider:
         config: ScriptConfig | None = None,
         run_id: str = "",
         created_at: str = "",
+        fact_check_result: FactCheckResult | None = None,
     ) -> ScriptGenerationResult:
         config = (config or self.config).validate()
         package = package.validate()
-        claims = list(package.claims)
+
+        if fact_check_result is not None:
+            fact_check_result = bind_fact_check_result(package, fact_check_result)
+            gate = fact_check_gate(fact_check_result, config)
+            if gate is not None:
+                return gate
+            claims = list(approved_claims(fact_check_result, package))
+            result_id = fact_check_result.result_id
+        else:
+            claims = list(package.claims)
+            result_id = ""
 
         if len(claims) < config.min_approved_claims:
             return ScriptGenerationResult(
@@ -133,9 +162,9 @@ class MockScriptProvider:
             estimated_duration_seconds=total_seconds,
             used_claim_ids=tuple(sorted(used)),
             unused_approved_claim_ids=tuple(
-                sorted({claim.claim_id for claim in package.claims} - used)
+                sorted({claim.claim_id for claim in claims} - used)
             ),
-            result_id="",
+            result_id=result_id,
             package_id=package.package_id,
             provenance=Provenance(
                 generated_by="script_agent_v1",
@@ -150,7 +179,10 @@ class MockScriptProvider:
         )
         script.validate()
 
-        validation = validate_script_from_package(script, package, config)
+        if fact_check_result is not None:
+            validation = validate_script(script, fact_check_result, claims, config)
+        else:
+            validation = validate_script_from_package(script, package, config)
         if validation.valid:
             return ScriptGenerationResult(
                 status=STATUS_GENERATED,

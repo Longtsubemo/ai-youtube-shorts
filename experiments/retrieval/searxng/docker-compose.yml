@@ -1,0 +1,42 @@
+# Isolated, localhost-only SearXNG instance for the retrieval experiment.
+#
+# Scope: this compose file is the ONLY Docker artifact in the repository and it
+# is NOT wired into the AI YouTube pipeline. Nothing under agents/, providers/,
+# or pipeline/ reads it.
+#
+# Start:  docker compose -f experiments/retrieval/searxng/docker-compose.yml up -d
+# Stop:   docker compose -f experiments/retrieval/searxng/docker-compose.yml down
+# Logs:   docker compose -f experiments/retrieval/searxng/docker-compose.yml logs -f
+#
+# The port is published to 127.0.0.1 explicitly (not 0.0.0.0) so the instance
+# is unreachable from the local network.
+name: retrieval-searxng
+
+services:
+  searxng:
+    image: searxng/searxng:latest
+    container_name: retrieval-searxng
+    # Granian (the WSGI server in this image) must not run as root.
+    user: searxng:searxng
+    restart: unless-stopped
+    environment:
+      # SearXNG's own env-var overrides (docs.searxng.org admin/settings).
+      # SEARXNG_BASE_URL is only used to build inbound links in the HTML UI.
+      SEARXNG_BASE_URL: "http://localhost:8080/"
+      SEARXNG_BIND_ADDRESS: "0.0.0.0"
+      SEARXNG_PORT: "8080"
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      # Read-only: the image's entrypoint wants to chown its config dir, and
+      # this file is the experiment's source of truth, so it must not be
+      # rewritten by the container.
+      - ./settings.yml:/etc/searxng/settings.yml:ro
+    healthcheck:
+      # /healthz is SearXNG's dedicated liveness endpoint and does not
+      # trigger a real search (so the check cannot perturb experiments).
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=5).status == 200 else 1)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -81,6 +82,30 @@ def _check_iso(value: Any, name: str) -> str:
     return text
 
 
+# A bare 4-digit year carries no day/month precision. The claim-date contract
+# (docs/DATA_CONTRACTS.md §5) has no representation for partial dates, so such a
+# value can only be *omitted* — never widened into a fake "1986-01-01".
+_BARE_YEAR = re.compile(r"^\d{4}$")
+_MIN_YEAR = 1000
+_MAX_YEAR = 9999
+
+
+def is_bare_year(value: Any) -> bool:
+    """True only for a bare 4-digit year such as ``"1986"``.
+
+    Deliberately narrow: anything else (partial ISO dates like ``"1986-07"``,
+    free text like ``"sometime in 1986"``, or out-of-range digits) is *not* a
+    bare year and keeps failing normal ISO validation. This keeps the
+    tolerance deterministic and auditable instead of a blanket "drop any bad
+    date" escape hatch.
+    """
+    text = str(value).strip() if value is not None else ""
+    if not _BARE_YEAR.match(text):
+        return False
+    return _MIN_YEAR <= int(text) <= _MAX_YEAR
+
+
+
 def _check_url(value: Any, name: str = "url") -> str:
     text = _require(value, name).strip()
     parsed = urlparse(text)
@@ -92,6 +117,27 @@ def _check_url(value: Any, name: str = "url") -> str:
 def source_id_for(url: str) -> str:
     """Stable source id derived from the source URL (deterministic across runs)."""
     return "src_" + hashlib.sha1(url.encode("utf-8")).hexdigest()[:10]
+
+
+def normalize_source_url(url: str) -> str:
+    """Canonical form of a source URL for identity comparisons.
+
+    Lowercase scheme + host, trailing slashes removed, query/fragment kept as
+    given. Returns "" for anything that is not an absolute http(s) URL. This
+    is the single source of truth for "is this the same page?" so providers
+    and the agent cannot drift into disagreeing about URL identity.
+    """
+    text = str(url).strip()
+    if not text:
+        return ""
+    try:
+        parsed = urlparse(text)
+        if parsed.scheme.lower() not in ("http", "https") or not parsed.netloc:
+            return ""
+        path = parsed.path.rstrip("/") or "/"
+        return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}{path}"
+    except ValueError:
+        return ""
 
 
 def claim_id_for(claim_text: str) -> str:
@@ -124,6 +170,22 @@ class ClaimDate:
             raise ResearchPackageError(f"unknown date_kind '{date_kind}' (allowed: {allowed})")
         date = _check_iso(_require(data.get("date"), "date"), "date")
         return cls(date_kind=date_kind, date=date)
+
+    @classmethod
+    def from_optional_dict(cls, data: Any) -> "ClaimDate | None":
+        """Parse a model-supplied date entry, tolerating only a bare year.
+
+        Models routinely answer with the year they know ("1986") when a source
+        states no day or month. The contract has no partial-date field, and
+        inventing "1986-01-01" would fabricate precision the source never gave
+        us — so the entry is dropped instead of aborting the whole package.
+
+        Every other malformed value still raises, exactly as `from_dict` does,
+        so this is not a general "ignore bad dates" switch.
+        """
+        if isinstance(data, dict) and is_bare_year(data.get("date")):
+            return None
+        return cls.from_dict(data)
 
 
 @dataclass(frozen=True)
@@ -197,6 +259,12 @@ class Source:
 class FactClaim:
     """One evidence-backed claim extracted during research.
 
+    `source_ids` holds every retrieved source that supports the claim, in
+    order, primary source first. It is a tuple of one or more ids: a claim
+    may be corroborated by several independent sources (needed for the
+    fact-check stage's critical-claim corroboration gate). Ids must be
+    unique and must exist in the package's sources.
+
     `verification_status` is provisional by design; the research agent is
     not allowed to mark a claim as verified (that is the fact-check stage's
     role). `confidence` is a deterministic heuristic based on the backing
@@ -229,6 +297,11 @@ class FactClaim:
             )
         for source_id in self.source_ids:
             _require(source_id, "source_ids entry")
+        if len(set(self.source_ids)) != len(self.source_ids):
+            duplicates = sorted({sid for sid in self.source_ids if list(self.source_ids).count(sid) > 1})
+            raise ResearchPackageError(
+                f"duplicate source_id in claim.source_ids: {', '.join(duplicates)}"
+            )
         return self
 
     def to_dict(self) -> dict:

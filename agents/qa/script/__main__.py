@@ -27,6 +27,7 @@ from agents.qa.script.stage import (
     load_script,
     run_script_qa,
 )
+from agents.research.models import ResearchPackage
 from agents.research.provider import MockResearchProvider
 from agents.research.stage import load_topic_selection, run_research
 from pipeline.state import PipelineState, Stage
@@ -57,6 +58,16 @@ def main() -> int:
     )
     parser.add_argument("--run-id", default=None, help="run id (default: script's run id)")
     parser.add_argument(
+        "--research",
+        type=Path,
+        default=None,
+        help=(
+            "Stage-2 ResearchPackage artifact JSON. Supply this for a real run: "
+            "QA resolves approved claim ids against THIS package, so the default "
+            "mock package cannot validate a real Script."
+        ),
+    )
+    parser.add_argument(
         "--out",
         type=Path,
         default=None,
@@ -71,7 +82,12 @@ def main() -> int:
 
     script = load_script(args.script)
     result = load_fact_check_result(args.result)
-    package = build_mock_package()
+    if args.research is not None:
+        if not args.research.is_file():
+            raise SystemExit(f"[script_qa] ResearchPackage not found: {args.research}")
+        package = ResearchPackage.from_json(args.research.read_text(encoding="utf-8"))
+    else:
+        package = build_mock_package()
     if args.run_id:
         run_id = args.run_id
     elif args.script == DEFAULT_SCRIPT_PATH and args.result == DEFAULT_FACT_CHECK_RESULT_PATH:

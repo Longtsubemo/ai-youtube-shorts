@@ -29,6 +29,11 @@ import sys
 import uuid
 from pathlib import Path
 
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - python-dotenv is a declared dep
+    load_dotenv = None
+
 from agents.qa.fact_checker.evidence import (
     DEFAULT_EVIDENCE_DATA_PATH,
     EvidenceProviderError,
@@ -77,11 +82,14 @@ def main() -> int:
     parser.add_argument(
         "--retriever",
         default=None,
-        help="real web retrieval for --provider gemini (currently: firecrawl)",
+        help="real web retrieval for --provider gemini (firecrawl | hybrid)",
     )
     parser.add_argument("--run-id", default=None, help="run id (default: generated)")
     parser.add_argument("--out", type=Path, default=None, help="output path for the FactCheckResult artifact")
     args = parser.parse_args()
+
+    if load_dotenv is not None:
+        load_dotenv()  # honour GEMINI_API_KEY/GEMINI_MODEL from .env (ignored by git)
 
     if args.package is not None:
         if not args.package.is_file():
@@ -98,7 +106,7 @@ def main() -> int:
         )
 
     if args.provider == "gemini":
-        if args.retriever is not None and args.retriever != "firecrawl":
+        if args.retriever is not None and args.retriever not in ("firecrawl", "hybrid"):
             print(f"[fact_checker] unknown retriever: {args.retriever!r}", file=sys.stderr)
             return 2
         components = _build_gemini(args)

@@ -5,11 +5,13 @@ script, plans a scene-by-scene production, generates video on a GPU
 worker, assembles the final YouTube Short, and eventually publishes it —
 end to end.
 
-> **Status: implementing, stage by stage.** Ten stages are implemented with
-> deterministic, network-free mock providers: topic selection, research, fact
-> checking, script generation, script QA, scene planning, video generation,
-> video QA, policy/publishing QA, and the human approval gate. Voice/audio,
-> assembly, publishing, and analytics are not implemented yet.
+> **Status: implementing, stage by stage.** Ten stages are implemented:
+> topic selection, research, fact checking, script generation, script QA,
+> scene planning, video generation, video QA, policy/publishing QA, and the
+> human approval gate. Stages 1–4 have opt-in real Gemini/Firecrawl paths with
+> real run or smoke verification recorded; Stages 5–10 remain deterministic or
+> mock-first. Voice/audio, assembly, publishing, and analytics are not
+> implemented yet.
 
 ## Long-term pipeline
 
@@ -63,12 +65,13 @@ video/             Future video build steps (generation, editing, subtitles, aud
 data/              Working artifacts per run + committed mock fixtures under data/mock/
 prompts/           Prompt templates per agent
 config/            Configuration (populated later; secrets go in .env)
-tests/             Test suite for the implemented stages (1229 passing, 5 gated skips)
+tests/             Test suite for the implemented stages (1257 passing, 5 gated skips)
 ```
 
 ## Current development stage
 
-Implemented stages (all deterministic, mock-backed, offline):
+Implemented stages (deterministic gates throughout; real provider paths are
+opt-in for Stages 1–4):
 
 - **Stage 1 — Topic Selection** (`agents/seo/`): signal-scored topic
   candidates + selection.
@@ -109,12 +112,22 @@ Implemented stages (all deterministic, mock-backed, offline):
   (no written decision = no approval). Soft REVIEW overrides are bound to the
   reviewed artifact id; hard REJECT is never overrideable. Staleness is
   detected by re-digesting current artifacts (`--check --approval <path>`),
-  and re-review chains `supersedes_approval_id`. Advances state to the generic
-  `Stage.PUBLISH`; the endpoint is a **MANUAL upload** (`manual_upload.ready`)
-  — Stage 10 performs no YouTube/network/oauth work.
+  and re-review chains `supersedes_approval_id`. APPROVED advances state to
+  the generic `Stage.PUBLISH`; non-approved decisions remain at
+  `Stage.QUALITY_CHECK`. The endpoint is a **MANUAL upload**
+  (`manual_upload.ready`) — Stage 10 performs no YouTube/network/oauth work.
 
 Not yet implemented: voice/audio, video assembly, publishing (Stage 11),
 analytics.
+
+### Current handoff
+
+Work is intentionally paused after the verified Stage 10 implementation. The
+next session begins with the exact task: `Run Stages 1–6 end-to-end with actual
+data.` Then use the Stage 6 `ProductionPlan` as Stage 7 input for
+video-generation experimentation. Do not begin Stage 11+ work. See
+`docs/PROJECT_PROGRESS.md` for the authoritative checkpoint, preserved real
+artifacts, and exact repository state.
 
 ## Running the implemented stages
 
@@ -139,7 +152,7 @@ python -m agents.qa.video                    # Stage 8: video QA (PASS/REVIEW/RE
 python -m agents.qa.policy                   # Stage 9: policy/publishing QA (PASS/REVIEW/REJECT)
 python -m agents.human_approval              # Stage 10: human approval (APPROVED/CHANGES_REQUESTED/REJECTED)
 
-# run the whole test suite (1229 passing, 5 gated skips)
+# run the whole test suite (1257 passing, 5 gated skips)
 python -m pytest tests -q
 ```
 
@@ -180,7 +193,8 @@ verbatim in the retrieved content, and lets the deterministic gates mint the
 final `PASS/REVIEW/REJECT` — Gemini only proposes which supplied evidence
 relates in what way.
 
-Stages 5/6 have **no Gemini providers yet** — every Gemini path here is an
+Stages 5 and 6 have **no Gemini providers** — Stage 5 is deterministic by design
+and Stage 6 remains deterministic/mock-first. Every Gemini path here is an
 explicit opt-in and defaults to deterministic mocks.
 
 ## Design documentation

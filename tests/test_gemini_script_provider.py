@@ -309,7 +309,7 @@ class TestProvenanceAndWiring:
     def test_prompt_rendering_injects_claims_only(self):
         package = build_package()
         provider = _provider(FakeRawClient())
-        prompt = provider._render_prompt(package, ScriptConfig())
+        prompt = provider._render_prompt(package, ScriptConfig(), package.claims)
         assert "{claims}" not in prompt and "{topic_id}" not in prompt
         assert "{topic_title}" not in prompt and "{max_words}" not in prompt
         assert "Why octopuses have three hearts" in prompt

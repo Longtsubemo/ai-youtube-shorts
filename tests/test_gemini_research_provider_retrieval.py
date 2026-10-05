@@ -108,6 +108,103 @@ class TestRetrievalCandidates:
         assert len(set(t.lower() for t in texts)) == len(texts)
 
 
+class TestDuplicateClaimMerging:
+    """A duplicate statement is retained once and corroborates across sources.
+
+    Provider-level coverage of the Defect-3 fix: previously the second
+    occurrence was discarded outright, leaving the corroborating source with
+    zero claims. PAPER and NEWS are both `example.test`, so same-registrable-
+    domain merging is deliberately refused here; the cross-domain case lives in
+    `tests/test_research_multi_source_merge.py`.
+    """
+
+    def test_duplicate_claim_is_retained_once(self):
+        payload = valid_research_payload((PAPER, NEWS))
+        dup = dict(payload["sources"][0]["claims"][0])
+        dup["claim_text"] = "Octopuses have three hearts: two branchial hearts and a systemic heart."
+        payload["sources"][1]["claims"].append(dup)
+        fake = _structured_fake(payload=payload, sources=(PAPER, NEWS))
+        candidates = _provider(fake).search(_topic())
+        texts = [claim.claim_text for candidate in candidates for claim in candidate.claims]
+        assert len(texts) == 2  # the shared statement appears exactly once
+
+    def test_same_domain_duplicate_is_not_merged(self):
+        """`example.test` and `example.test` are one registrable domain."""
+        payload = valid_research_payload((PAPER, NEWS))
+        dup = dict(payload["sources"][0]["claims"][0])
+        payload["sources"][1]["claims"].append(dup)
+        fake = _structured_fake(payload=payload, sources=(PAPER, NEWS))
+        candidates = _provider(fake).search(_topic())
+        for candidate in candidates:
+            for claim in candidate.claims:
+                assert claim.also_supported_by_urls == ()
+
+    def test_cross_domain_duplicate_is_merged(self):
+        other = RetrievedSource(
+            url="https://news.test/octopus",
+            title="Other outlet",
+            publisher="news.test",
+            source_type="news_article",
+            content="Octopuses have three hearts.",
+            domain="news.test",
+        )
+        sources = (RETRIEVED[0], other)
+        payload = valid_research_payload((PAPER, other.url))
+        dup = dict(payload["sources"][0]["claims"][0])
+        payload["sources"][1]["claims"].append(dup)
+        fake = _structured_fake(payload=payload, sources=(PAPER, other.url))
+        candidates = _provider(fake, sources=sources).search(_topic())
+        merged = [
+            claim
+            for candidate in candidates
+            for claim in candidate.claims
+            if claim.also_supported_by_urls
+        ]
+        assert len(merged) == 1
+        owner = next(
+            c
+            for c in candidates
+            if any(claim is merged[0] for claim in c.claims)
+        )
+        assert owner.url == PAPER
+        assert list(merged[0].also_supported_by_urls) == [other.url]
+
+    def test_merge_end_to_end_reaches_the_agent(self):
+        """The merged URL must become a real second source_id in the package."""
+        from agents.research.models import source_id_for
+
+        other = RetrievedSource(
+            url="https://news.test/octopus",
+            title="Other outlet",
+            publisher="news.test",
+            source_type="news_article",
+            content="Octopuses have three hearts.",
+            domain="news.test",
+        )
+        sources = (RETRIEVED[0], other)
+        payload = valid_research_payload((PAPER, other.url))
+        dup = dict(payload["sources"][0]["claims"][0])
+        payload["sources"][1]["claims"].append(dup)
+        fake = _structured_fake(payload=payload, sources=(PAPER, other.url))
+        provider = _provider(fake, sources=sources)
+        package = ResearchAgent(provider, run_id="merge").research(
+            {
+                "data": {
+                    "selected_topic_id": "t_octopus_hearts",
+                    "selected_topic": {
+                        "topic_id": "t_octopus_hearts",
+                        "title": "Why octopuses have three hearts",
+                    },
+                }
+            }
+        )
+        multi = [c for c in package.claims if len(c.source_ids) == 2]
+        assert len(multi) == 1
+        assert set(multi[0].source_ids) == {source_id_for(PAPER), source_id_for(other.url)}
+        # The corroborating source keeps its own claims and gains the shared one.
+        assert multi[0] in package.claims_for_source(source_id_for(other.url))
+
+
 class TestEvidenceBoundary:
     def test_empty_retrieval_returns_no_candidates_and_skips_model(self):
         fake = FakeRawClient()
@@ -219,3 +316,82 @@ class TestSchemaStrictness:
         fake.add_result("this is not json")
         with pytest.raises(GeminiProviderError):
             _provider(fake).search(_topic())
+
+
+class TestMultiSourceDeclaration:
+    """`also_supported_by` must be grounded in real retrieval evidence."""
+
+    @staticmethod
+    def _payload(paper_extras):
+        return {
+            "sources": [
+                {
+                    "url": PAPER,
+                    "title": "",
+                    "publisher": "",
+                    "source_type": "",
+                    "credibility_tier": "primary",
+                    "claims": [
+                        {
+                            "claim_text": "Octopuses have three hearts.",
+                            "also_supported_by": paper_extras,
+                        }
+                    ],
+                },
+                {
+                    "url": NEWS,
+                    "title": "",
+                    "publisher": "",
+                    "source_type": "",
+                    "credibility_tier": "primary",
+                    "claims": [{"claim_text": "Octopus blood is blue."}],
+                },
+            ]
+        }
+
+    def _extras(self, paper_extras):
+        fake = _structured_fake(payload=self._payload(paper_extras), sources=(PAPER, NEWS))
+        candidates = _provider(fake, sources=RETRIEVED).search(_topic())
+        return candidates[0].claims[0].also_supported_by_urls
+
+    def test_retrieved_url_is_kept(self):
+        assert NEWS in self._extras([NEWS])
+
+    def test_url_outside_retrieval_evidence_is_dropped(self):
+        assert self._extras(["https://invented.example/fake"]) == ()
+
+    def test_mixed_list_keeps_only_grounded_urls(self):
+        assert self._extras([NEWS, "https://invented.example/fake"]) == (NEWS,)
+
+    def test_duplicate_extras_are_deduplicated(self):
+        assert self._extras([NEWS, NEWS]) == (NEWS,)
+
+    def test_absent_field_defaults_to_empty(self):
+        payload = self._payload([])
+        del payload["sources"][0]["claims"][0]["also_supported_by"]
+        fake = _structured_fake(payload=payload, sources=(PAPER, NEWS))
+        candidates = _provider(fake, sources=RETRIEVED).search(_topic())
+        assert candidates[0].claims[0].also_supported_by_urls == ()
+
+    def test_grounded_declaration_binds_two_sources_end_to_end(self):
+        """The whole point: a real two-source claim reaches Stage 3."""
+        from agents.seo.result import TopicSelection
+
+        fake = _structured_fake(payload=self._payload([NEWS]), sources=(PAPER, NEWS))
+        provider = _provider(fake, sources=RETRIEVED)
+        agent = ResearchAgent(provider, run_id="r1")
+        selection = TopicSelection(
+            selection_id="s1",
+            selected_topic_id="t_octopus_hearts",
+            selected_topic={"title": "Why octopuses have three hearts"},
+            ranked_candidates=[],
+            selection_mode="manual",
+            historical_data_available=False,
+            selection_reason="test",
+            scoring_configuration={},
+            created_at="2026-01-01T00:00:00+00:00",
+        )
+        package = agent.research(selection)
+        claim = next(c for c in package.claims if c.claim_text == "Octopuses have three hearts.")
+        assert len(claim.source_ids) == 2
+        package.validate(traceability=True)

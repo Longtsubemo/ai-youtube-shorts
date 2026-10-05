@@ -24,6 +24,15 @@ htmlcov/
 .env.*
 !.env.example
 
+# OpenCode session artifacts (local-only; per-session, not shared)
+# All three are genuinely ignored. docs/PROJECT_PROGRESS.md was previously
+# tracked and was untracked with `git rm --cached`, which keeps the local file
+# and drops it from future commits. AGENTS.md and opencode_report.md were never
+# tracked, so listing them here is sufficient on its own.
+AGENTS.md
+opencode_report.md
+docs/PROJECT_PROGRESS.md
+
 # Generated media and large artifacts
 data/videos/*
 !data/videos/.gitkeep

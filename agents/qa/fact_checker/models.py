@@ -174,6 +174,260 @@ class Evidence:
 
 
 # --------------------------------------------------------------------------- #
+# Evidence-chain audit (observability only)
+# --------------------------------------------------------------------------- #
+#
+# Everything below is additive audit metadata. It changes no verdict, no gate
+# and no gate input: it records what was offered to the verifier and what the
+# verifier did with it, so a finished run can be re-read later.
+#
+# Two distinctions are load-bearing and must not be collapsed:
+#
+#   EVIDENCE COUNT != CORROBORATION COUNT.
+#   `SourceEvidenceAudit.evidence_count` counts Evidence *records*. Corroboration
+#   is counted exclusively by `supporting_source_ids` under the unchanged
+#   corroboration gate. Six records from one source are one source, never six.
+#
+#   SOURCE CREDIT != RECORD CREDIT.
+#   `EvidenceAuditRecord.credited` means the verifier credited this record's
+#   SOURCE for this claim. The verifier does not expose which individual excerpt
+#   it leaned on, so per-record credit is not recoverable and is not claimed.
+
+# How an audit evidence record reached the verifier.
+EVIDENCE_ORIGINS = ("extraction", "recovery")
+
+# Per-source outcome within one claim's evidence set.
+SOURCE_AUDIT_STATUSES = ("credited", "not_credited", "no_evidence")
+
+# Why a bound source contributed no evidence. Only reasons the code can actually
+# distinguish are listed; anything else is `NO_EVIDENCE_UNKNOWN` rather than a
+# guess.
+NO_EVIDENCE_PROVIDER_FAILED = "provider_failed"
+NO_EVIDENCE_PROVIDER_EMPTY = "provider_returned_empty"
+NO_EVIDENCE_ALL_REJECTED = "all_records_rejected"
+NO_EVIDENCE_UNKNOWN = "unknown"
+NO_EVIDENCE_REASONS = (
+    NO_EVIDENCE_PROVIDER_FAILED,
+    NO_EVIDENCE_PROVIDER_EMPTY,
+    NO_EVIDENCE_ALL_REJECTED,
+    NO_EVIDENCE_UNKNOWN,
+)
+
+
+@dataclass(frozen=True)
+class EvidenceAuditRecord:
+    """One evidence item the verifier was actually given, with its text.
+
+    `excerpt` is stored VERBATIM and is never truncated or normalised, because
+    `evidence_id_for` hashes `(source_id, excerpt.strip())`. Storing the exact
+    hashed text is what lets an audit re-derive `evidence_id` and prove the
+    record really came from the source it names; a truncated excerpt would
+    silently break that check.
+    """
+
+    evidence_id: str
+    source_id: str
+    excerpt: str
+    origin: str
+    evidence_type: str
+    locator: str
+    credited: bool
+    retrieved_at: str = ""
+    notes: str = ""
+
+    def validate(self) -> "EvidenceAuditRecord":
+        _require(self.evidence_id, "evidence_audit.evidence_id")
+        _require(self.source_id, "evidence_audit.source_id")
+        _require(self.excerpt, "evidence_audit.excerpt")
+        _require(self.locator, "evidence_audit.locator")
+        if self.origin not in EVIDENCE_ORIGINS:
+            allowed = ", ".join(EVIDENCE_ORIGINS)
+            raise FactCheckError(
+                f"unknown evidence audit origin '{self.origin}' (allowed: {allowed})"
+            )
+        if self.evidence_type not in EVIDENCE_TYPES:
+            allowed = ", ".join(EVIDENCE_TYPES)
+            raise FactCheckError(
+                f"unknown evidence_type '{self.evidence_type}' (allowed: {allowed})"
+            )
+        _check_iso(self.retrieved_at, "evidence_audit.retrieved_at")
+        return self
+
+    def reproduces_evidence_id(self) -> bool:
+        """True when `(source_id, excerpt)` re-derives this record's id.
+
+        This is the audit's integrity check: it fails if the stored excerpt was
+        ever altered, truncated or reattached to a different source.
+        """
+        return evidence_id_for(self.source_id, self.excerpt) == self.evidence_id
+
+    @classmethod
+    def from_evidence(
+        cls,
+        evidence: "Evidence",
+        *,
+        origin: str,
+        credited: bool,
+    ) -> "EvidenceAuditRecord":
+        return cls(
+            evidence_id=evidence.evidence_id,
+            source_id=evidence.source_id,
+            excerpt=evidence.excerpt,
+            origin=origin,
+            evidence_type=evidence.evidence_type,
+            locator=evidence.locator,
+            credited=credited,
+            retrieved_at=evidence.retrieved_at,
+            notes=evidence.notes,
+        ).validate()
+
+    def to_dict(self) -> dict:
+        return {
+            "evidence_id": self.evidence_id,
+            "source_id": self.source_id,
+            "excerpt": self.excerpt,
+            "origin": self.origin,
+            "evidence_type": self.evidence_type,
+            "locator": self.locator,
+            "credited": self.credited,
+            "retrieved_at": self.retrieved_at,
+            "notes": self.notes,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "EvidenceAuditRecord":
+        if not isinstance(data, dict):
+            raise FactCheckError(f"evidence audit record must be a mapping, got {data!r}")
+        return cls(
+            evidence_id=_require(data.get("evidence_id"), "evidence_audit.evidence_id"),
+            source_id=_require(data.get("source_id"), "evidence_audit.source_id"),
+            excerpt=_require(data.get("excerpt"), "evidence_audit.excerpt"),
+            origin=_require(data.get("origin"), "evidence_audit.origin"),
+            evidence_type=_require(data.get("evidence_type"), "evidence_audit.evidence_type"),
+            locator=_require(data.get("locator"), "evidence_audit.locator"),
+            credited=bool(data.get("credited", False)),
+            retrieved_at=_check_iso(data.get("retrieved_at"), "evidence_audit.retrieved_at"),
+            notes=data.get("notes") or "",
+        ).validate()
+
+
+@dataclass(frozen=True)
+class SourceEvidenceAudit:
+    """What one claim's bound sources contributed, per source.
+
+    Recorded for EVERY source bound to the claim, so a reader can tell an
+    empty source apart from an absent one. `evidence_count` counts records, not
+    corroboration; see the module-level warning above.
+    """
+
+    source_id: str
+    evidence_count: int
+    status: str
+    reason: str = ""
+    recovery_attempted: bool = False
+    recovery_count: int = 0
+
+    def validate(self) -> "SourceEvidenceAudit":
+        _require(self.source_id, "source_audit.source_id")
+        if self.evidence_count < 0:
+            raise FactCheckError(
+                f"source_audit.evidence_count must be >= 0, got {self.evidence_count}"
+            )
+        if self.status not in SOURCE_AUDIT_STATUSES:
+            allowed = ", ".join(SOURCE_AUDIT_STATUSES)
+            raise FactCheckError(
+                f"unknown source audit status '{self.status}' (allowed: {allowed})"
+            )
+        if self.status == "no_evidence" and self.reason not in NO_EVIDENCE_REASONS:
+            allowed = ", ".join(NO_EVIDENCE_REASONS)
+            raise FactCheckError(
+                f"unknown no-evidence reason '{self.reason}' (allowed: {allowed})"
+            )
+        if self.status != "no_evidence" and self.evidence_count == 0:
+            raise FactCheckError(
+                f"source {self.source_id!r} has status '{self.status}' but zero evidence"
+            )
+        return self
+
+    @property
+    def is_empty(self) -> bool:
+        return self.status == "no_evidence"
+
+    def to_dict(self) -> dict:
+        return {
+            "source_id": self.source_id,
+            "evidence_count": self.evidence_count,
+            "status": self.status,
+            "reason": self.reason,
+            "recovery_attempted": self.recovery_attempted,
+            "recovery_count": self.recovery_count,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "SourceEvidenceAudit":
+        if not isinstance(data, dict):
+            raise FactCheckError(f"source evidence audit must be a mapping, got {data!r}")
+        return cls(
+            source_id=_require(data.get("source_id"), "source_audit.source_id"),
+            evidence_count=int(data.get("evidence_count") or 0),
+            status=_require(data.get("status"), "source_audit.status"),
+            reason=data.get("reason") or "",
+            recovery_attempted=bool(data.get("recovery_attempted", False)),
+            recovery_count=int(data.get("recovery_count") or 0),
+        ).validate()
+
+
+@dataclass(frozen=True)
+class ClaimEvidenceAudit:
+    """The claim-local evidence chain: records plus one row per bound source.
+
+    Deliberately per-claim. Recovered evidence is claim-specific, so the same
+    `evidence_id` can legitimately appear under two claims with different
+    `origin` and different `credited`; a single global table would misrepresent
+    that.
+    """
+
+    claim_id: str
+    records: tuple[EvidenceAuditRecord, ...] = ()
+    sources: tuple[SourceEvidenceAudit, ...] = ()
+
+    def validate(self) -> "ClaimEvidenceAudit":
+        _require(self.claim_id, "evidence_audit.claim_id")
+        for record in self.records:
+            record.validate()
+        for row in self.sources:
+            row.validate()
+        return self
+
+    def record(self, evidence_id: str) -> EvidenceAuditRecord | None:
+        return next((item for item in self.records if item.evidence_id == evidence_id), None)
+
+    def source(self, source_id: str) -> SourceEvidenceAudit | None:
+        return next((item for item in self.sources if item.source_id == source_id), None)
+
+    @property
+    def recovered_evidence_ids(self) -> tuple[str, ...]:
+        return tuple(item.evidence_id for item in self.records if item.origin == "recovery")
+
+    def to_dict(self) -> dict:
+        return {
+            "claim_id": self.claim_id,
+            "records": [item.to_dict() for item in self.records],
+            "sources": [item.to_dict() for item in self.sources],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ClaimEvidenceAudit":
+        if not isinstance(data, dict):
+            raise FactCheckError(f"claim evidence audit must be a mapping, got {data!r}")
+        return cls(
+            claim_id=_require(data.get("claim_id"), "evidence_audit.claim_id"),
+            records=tuple(EvidenceAuditRecord.from_dict(item) for item in data.get("records") or ()),
+            sources=tuple(SourceEvidenceAudit.from_dict(item) for item in data.get("sources") or ()),
+        ).validate()
+
+
+# --------------------------------------------------------------------------- #
 # Claim verdict
 # --------------------------------------------------------------------------- #
 
@@ -187,6 +441,10 @@ class ClaimVerdict:
     supplied evidence backed / contradicted the claim wording. The rationale
     explains the verdict using ONLY the supplied evidence and metadata - it is
     never allowed to introduce outside knowledge.
+
+    `evidence_audit` is optional audit metadata (see `ClaimEvidenceAudit`). It
+    is `None` on artifacts written before it existed and is never read by any
+    gate, so its absence cannot change a verdict.
     """
 
     claim_id: str
@@ -199,6 +457,7 @@ class ClaimVerdict:
     critical: bool
     checks_performed: tuple[str, ...] = ()
     verifier: str = ""
+    evidence_audit: ClaimEvidenceAudit | None = None
 
     def validate(self) -> "ClaimVerdict":
         _require(self.claim_id, "claim_id")
@@ -211,6 +470,8 @@ class ClaimVerdict:
             _require(source_id, "contradiction_source_ids entry")
         _require(self.rationale, "rationale")
         _check_confidence(self.confidence)
+        if self.evidence_audit is not None:
+            self.evidence_audit.validate()
         return self
 
     @property
@@ -229,12 +490,16 @@ class ClaimVerdict:
             "critical": self.critical,
             "checks_performed": list(self.checks_performed),
             "verifier": self.verifier,
+            "evidence_audit": (
+                None if self.evidence_audit is None else self.evidence_audit.to_dict()
+            ),
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "ClaimVerdict":
         if not isinstance(data, dict):
             raise FactCheckError(f"claim verdict must be a mapping, got {data!r}")
+        audit = data.get("evidence_audit")
         verdict = cls(
             claim_id=_require(data.get("claim_id"), "claim_id"),
             verdict=_check_verdict(data.get("verdict")),
@@ -246,6 +511,7 @@ class ClaimVerdict:
             critical=bool(data.get("critical", False)),
             checks_performed=tuple(data.get("checks_performed") or ()),
             verifier=data.get("verifier") or "",
+            evidence_audit=None if audit is None else ClaimEvidenceAudit.from_dict(audit),
         )
         return verdict.validate()
 

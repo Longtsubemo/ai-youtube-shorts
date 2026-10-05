@@ -3,23 +3,33 @@
 Implements the `ScriptProvider` protocol from `agents/script/provider.py`
 using the provider foundation in `providers/gemini/client.py`.
 
-Flow:
+Flow (full pipeline — `fact_check_result` supplied):
 
-    ResearchPackage
-        -> prompt renders ONLY the package's claims (ids + texts + evidence)
+    ResearchPackage + FactCheckResult
+        -> whitelist-join `result.approved_claims` against the package
+           (rejected / REVIEW / unknown claims can never enter)
+        -> prompt renders ONLY those approved claims (ids + texts + evidence)
         -> Gemini structured output: title + lines with purpose/claim_refs
         -> deterministic mapping into the existing `Script` contract
-          (durations derived from word counts, used/unused tracking, provenance)
-        -> deterministic package validation (`validate_script_from_package`)
-          is the final gate: unknown refs, wording outside token coverage,
-          dropped hedges, or strengthened certainty all fail closed as a
-          `blocked` generation, never a persisted artifact.
+           (durations derived from word counts, used/unused tracking, provenance)
+        -> `Script.result_id` = `FactCheckResult.result_id`
+        -> deterministic fact-check validation (`validate_script`) is the final
+           gate: result_id mismatch, non-approved refs, wording outside token
+           coverage, dropped hedges, or strengthened certainty all fail closed
+           as a `blocked` generation, never a persisted artifact.
+
+Omitting `fact_check_result` selects the isolated preview path: the whole
+package is the working set and `result_id` stays empty. That path exists for
+standalone Stage-4 testing only; the CLI gates it behind an explicit opt-in so
+a normal pipeline run can never silently produce an unbound script.
 
 Evidence/rules boundary (identical to the other Gemini providers):
 
-- The model is NOT a fact authority: the ONLY factual input is the claim list
-  in the prompt. A line may only reference claims that exist in the package
-  (claim_refs must be package claim ids); anything else fails validation.
+- The model is NOT a fact authority: the ONLY factual input is the approved
+  claim list in the prompt. A line may only reference approved claim ids;
+  anything else fails validation.
+- Fact Checking, not Gemini, decides what is approved: the provider receives
+  the approved set and never re-evaluates or re-researches a verdict.
 - Preserved hedges: a hedged claim must not lose its hedge, and no claim may
   be upgraded to certainty (the deterministic validator enforces this).
 - Malformed model output (bad JSON, wrong purpose Literal, missing lines,
@@ -29,19 +39,22 @@ Evidence/rules boundary (identical to the other Gemini providers):
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Sequence
 
 from pydantic import BaseModel, Field, TypeAdapter
 
-from agents.research.models import ResearchPackage
+from agents.qa.fact_checker.models import FactCheckResult
+from agents.research.models import FactClaim, ResearchPackage
 from agents.script.models import Script, ScriptError, ScriptLine, line_id_for, script_id_for
 from agents.script.script_generator import (
     STATUS_BLOCKED,
     STATUS_GENERATED,
+    STATUS_INSUFFICIENT,
     ScriptConfig,
     ScriptGenerationResult,
 )
-from agents.script.validator import validate_script_from_package
+from agents.script.stage import approved_claims, bind_fact_check_result, fact_check_gate
+from agents.script.validator import validate_script, validate_script_from_package
 from agents.seo.models import Provenance, utc_now
 from providers.gemini.client import GeminiClient
 from providers.gemini.errors import GeminiMalformedResponseError, GeminiSchemaValidationError
@@ -124,19 +137,46 @@ class GeminiScriptProvider:
         config: ScriptConfig | None = None,
         run_id: str = "",
         created_at: str = "",
+        fact_check_result: FactCheckResult | None = None,
     ) -> ScriptGenerationResult:
         config = (config or ScriptConfig()).validate()
         package = package.validate()
-        prompt = self._render_prompt(package, config)
+
+        if fact_check_result is not None:
+            # Stage 3 is the source of truth for what may be scripted.
+            fact_check_result = bind_fact_check_result(package, fact_check_result)
+            gate = fact_check_gate(fact_check_result, config)
+            if gate is not None:
+                return gate
+            claims = list(approved_claims(fact_check_result, package))
+            if len(claims) < config.min_approved_claims:
+                return ScriptGenerationResult(
+                    status=STATUS_INSUFFICIENT,
+                    message=(
+                        f"insufficient approved content: {len(claims)} approved "
+                        f"claim(s) < required minimum {config.min_approved_claims}"
+                    ),
+                    blocked_reasons=("too_few_approved_claims",),
+                )
+            result_id = fact_check_result.result_id
+        else:
+            # Isolated preview path: the whole package is the working set.
+            claims = list(package.claims)
+            result_id = ""
+
+        prompt = self._render_prompt(package, config, claims)
         schema = self._request_schema(prompt)
         try:
-            script = self._to_script(schema, package, config, run_id, created_at)
+            script = self._to_script(schema, package, claims, result_id, config, run_id, created_at)
         except ScriptError as exc:
             raise GeminiSchemaValidationError(
                 f"Gemini script failed Stage-4 validation: {exc}"
             ) from exc
 
-        validation = validate_script_from_package(script, package, config)
+        if fact_check_result is not None:
+            validation = validate_script(script, fact_check_result, claims, config)
+        else:
+            validation = validate_script_from_package(script, package, config)
         if validation.valid:
             return ScriptGenerationResult(
                 status=STATUS_GENERATED,
@@ -178,7 +218,9 @@ class GeminiScriptProvider:
     def _system_prompt(self) -> str:
         return _SYSTEM_PROMPT
 
-    def _render_prompt(self, package: ResearchPackage, config: ScriptConfig) -> str:
+    def _render_prompt(
+        self, package: ResearchPackage, config: ScriptConfig, claims: Sequence[FactClaim]
+    ) -> str:
         path = Path(self._prompt_path)
         if not path.is_file():
             raise FileNotFoundError(f"prompt template not found: {path}")
@@ -187,16 +229,22 @@ class GeminiScriptProvider:
             path.read_text(encoding="utf-8")
             .replace("{topic_id}", package.topic_id)
             .replace("{topic_title}", package.topic_title)
-            .replace("{claims}", self._render_claims(package))
+            .replace("{claims}", self._render_claims(package, claims))
             .replace("{max_words}", str(max_words))
         )
 
     @staticmethod
-    def _render_claims(package: ResearchPackage) -> str:
-        """Render the package's claims as a deterministic, bounded text block."""
+    def _render_claims(package: ResearchPackage, claims: Sequence[FactClaim]) -> str:
+        """Render the permitted claims as a deterministic, bounded text block.
+
+        `claims` is the provider's permitted working set: the approved claims on
+        the full-pipeline path, or the whole package on the preview path. Only
+        these ids ever reach the model, so it cannot script a rejected or REVIEW
+        claim even if it wanted to.
+        """
         tier_by_id = {source.source_id: source.credibility_tier for source in package.sources}
         lines: list[str] = []
-        for claim in package.claims:
+        for claim in claims:
             tiers = sorted({tier_by_id[sid] for sid in claim.source_ids if sid in tier_by_id})
             meta = f"{claim.claim_type}/{claim.verification_status}"
             if tiers:
@@ -208,6 +256,8 @@ class GeminiScriptProvider:
         self,
         schema: ScriptResultSchema,
         package: ResearchPackage,
+        claims: Sequence[FactClaim],
+        result_id: str,
         config: ScriptConfig,
         run_id: str,
         created_at: str,
@@ -241,9 +291,9 @@ class GeminiScriptProvider:
             estimated_duration_seconds=total_seconds,
             used_claim_ids=tuple(sorted(used)),
             unused_approved_claim_ids=tuple(
-                sorted({claim.claim_id for claim in package.claims} - used)
+                sorted({claim.claim_id for claim in claims} - used)
             ),
-            result_id="",
+            result_id=result_id,
             package_id=package.package_id,
             provenance=Provenance(
                 generated_by=GENERATED_BY,

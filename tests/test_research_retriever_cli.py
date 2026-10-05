@@ -16,6 +16,11 @@ from agents.research.provider import DEFAULT_RESEARCH_DATA_PATH, MockResearchPro
 
 VALID_EVIDENCE = Path("data") / "mock" / "research_evidence.json"
 
+# --selection no longer defaults to this fixture: it defaults to the current
+# run's own data/<run_id>/research/topic_selection.json, which these CLI tests
+# do not create. Every case therefore names the selection explicitly.
+MOCK_SELECTION = Path("data") / "mock" / "topic_selection.json"
+
 
 class StubRetrievalGeminiProvider:
     """Stand-in for GeminiResearchProvider with a firecrawl-style retriever."""
@@ -82,6 +87,8 @@ def test_retriever_with_mock_provider_is_rejected(monkeypatch, tmp_path, capsys)
         "mock",
         "--retriever",
         "firecrawl",
+        "--selection",
+        str(MOCK_SELECTION),
         "--out",
         str(tmp_path / "research.json"),
         "--run-id",
@@ -100,6 +107,8 @@ def test_gemini_retriever_stamps_provenance_and_note(monkeypatch, tmp_path):
         "gemini",
         "--retriever",
         "firecrawl",
+        "--selection",
+        str(MOCK_SELECTION),
         "--out",
         str(tmp_path / "research.json"),
         "--run-id",
@@ -133,6 +142,8 @@ def test_gemini_retriever_unknown_retriever_exits_error(monkeypatch, tmp_path, c
         "gemini",
         "--retriever",
         "firecrawl",
+        "--selection",
+        str(MOCK_SELECTION),
         "--out",
         str(tmp_path / "research.json"),
         "--run-id",
@@ -155,6 +166,8 @@ def test_gemini_retriever_runtime_failure_exits_error(monkeypatch, tmp_path, cap
         "gemini",
         "--retriever",
         "firecrawl",
+        "--selection",
+        str(MOCK_SELECTION),
         "--out",
         str(tmp_path / "research.json"),
         "--run-id",

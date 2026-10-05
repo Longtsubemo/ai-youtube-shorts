@@ -11,9 +11,24 @@ Turns a selected topic into a structured, evidence-backed ResearchPackage:
     7. Assigns provisional confidence from source credibility tiers.
     8. Produces a ResearchPackage with a provisional research_status.
 
-The agent NEVER performs final fact verification: every claim keeps the
-provisional verification status, and settling it is deferred to the
-fact-check stage.
+Stage 2 / Stage 3 separation
+---------------------------
+Stage 2 produces research. Its obligations are:
+
+  - every claim binds to source ids that resolve to sources in this package
+    (traceability), with no fabricated or dangling citation;
+  - claim shape is well formed: a known `claim_type`, parseable dates, no
+    duplicate `source_ids`;
+  - provisional confidence and a provisional `research_status` are derived
+    from the source credibility tiers the provider supplied;
+  - nothing is settled. Every claim keeps `verification_status=PROVISIONAL`.
+
+Stage 3 owns factual verification, and with it the corroboration policy:
+whether a claim - including a critical one - is backed by enough independent
+non-discovery sources is decided there by `evaluate_claim` and
+`aggregate_package`, against the evidence Stage 3 actually retrieves. This
+module deliberately holds no corroboration policy of its own and does not
+import the fact-check gates.
 """
 
 from __future__ import annotations
@@ -29,6 +44,7 @@ from agents.research.models import (
     ResearchPackageError,
     Source,
     claim_id_for,
+    normalize_source_url,
     source_id_for,
     utc_now,
 )
@@ -167,6 +183,11 @@ class ResearchAgent:
         self, candidates: list[SourceCandidate], sources: tuple[Source, ...]
     ) -> tuple[FactClaim, ...]:
         sources_by_id = {source.source_id: source for source in sources}
+        source_id_by_url = {source.url: source.source_id for source in sources}
+        for source in sources:
+            canonical = normalize_source_url(source.url)
+            if canonical:
+                source_id_by_url.setdefault(canonical, source.source_id)
         claims: list[FactClaim] = []
         for index, candidate in enumerate(candidates):
             claim_items = candidate.claims
@@ -175,19 +196,31 @@ class ResearchAgent:
             source_id = source_id_for(candidate.url)
             for claim_index, item in enumerate(claim_items):
                 try:
-                    claims.append(self._claim_from_item(item, source_id, sources_by_id))
+                    claims.append(
+                        self._claim_from_item(
+                            item, source_id, sources_by_id, source_id_by_url
+                        )
+                    )
                 except ResearchPackageError as exc:
                     raise ResearchPackageError(
                         f"malformed claim at candidate {index}, claim {claim_index}: {exc}"
                     ) from None
         return tuple(claims)
 
-    def _claim_from_item(self, item, source_id: str, sources_by_id: dict) -> FactClaim:
+    def _claim_from_item(
+        self,
+        item,
+        source_id: str,
+        sources_by_id: dict,
+        source_id_by_url: Mapping[str, str] | None = None,
+    ) -> FactClaim:
         from agents.research.models import ClaimDate
 
         if not item or not getattr(item, "claim_text", "").strip():
             raise ResearchPackageError("claim_text is empty")
-        dates = tuple(ClaimDate.from_dict(entry) for entry in item.dates)
+        dates = tuple(
+            date for date in (ClaimDate.from_optional_dict(entry) for entry in item.dates) if date is not None
+        )
         claim_type = (
             item.suggested_claim_type
             if item.suggested_claim_type
@@ -201,18 +234,53 @@ class ResearchAgent:
             "opinion",
         ):
             raise ResearchPackageError(f"unknown claim_type '{claim_type}'")
-        backing = (sources_by_id[source_id],)
+        source_ids = self._resolve_source_ids(item, source_id, sources_by_id, source_id_by_url)
+        critical = bool(getattr(item, "critical", False))
+        backing = tuple(sources_by_id[resolved] for resolved in source_ids)
         return FactClaim(
             claim_id=claim_id_for(item.claim_text),
             claim_text=item.claim_text,
             claim_type=claim_type,
-            source_ids=(source_id,),
+            source_ids=source_ids,
             confidence=compute_confidence(claim_type, backing),
             verification_status=PROVISIONAL,
             dates=dates,
             notes=item.notes if getattr(item, "notes", None) else "",
-            critical=getattr(item, "critical", False),
+            critical=critical,
         )
+
+    @staticmethod
+    def _resolve_source_ids(
+        item,
+        source_id: str,
+        sources_by_id: dict,
+        source_id_by_url: Mapping[str, str] | None,
+    ) -> tuple[str, ...]:
+        """Bind a claim to its own source plus any declared supporting sources.
+
+        The primary source always comes first. Each extra declared URL must
+        resolve to a source that was actually built into this package;
+        anything else is a malformed relationship and is rejected rather
+        than silently dropped or invented. Ids are de-duplicated so the
+        result is stable and the FactClaim duplicate guard cannot trip.
+        """
+        if source_id not in sources_by_id:
+            raise ResearchPackageError(f"claim references unknown source: {source_id}")
+        resolved: list[str] = [source_id]
+        seen = {source_id}
+        index = source_id_by_url or {}
+        for raw_url in getattr(item, "also_supported_by_urls", ()) or ():
+            url = str(raw_url).strip()
+            extra_id = index.get(url) or index.get(normalize_source_url(url))
+            if extra_id is None:
+                raise ResearchPackageError(
+                    f"claim declares support from a source not in the package: {url}"
+                )
+            if extra_id in seen:
+                continue
+            seen.add(extra_id)
+            resolved.append(extra_id)
+        return tuple(resolved)
 
     @staticmethod
     def _compose_notes(

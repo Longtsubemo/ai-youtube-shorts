@@ -59,9 +59,23 @@ Return at most {max_sources} sources. For each source:
    - `dates` — zero or more {date_kind, date} entries, date_kind in
      publication_date / discovery_date / announcement_date / event_date.
      Only include a date when the source explicitly supports it.
+     `date` must be a COMPLETE ISO-8601 date (YYYY-MM-DD) or datetime
+     (YYYY-MM-DDTHH:MM:SS). A bare year such as "1986" is NOT valid for
+     `date`. If you only know the year, do NOT put it in `date` and do NOT
+     invent a day or month — either leave the `dates` entry out entirely, or
+     keep the year in the `claim_text`/context where it reads naturally. An
+     entry with an unusable `date` is dropped, so a rejected date loses you
+     nothing that stating the year in the claim text would not preserve.
    - `suggested_claim_type` — one of fact / inference / explanation /
      speculation / opinion (or omit and the downstream classifier decides).
    - `critical` — true only for claims the video's argument depends on.
+   - `also_supported_by` — URLs from the retrieved sources above that
+     support this SAME claim independently, so a claim can be corroborated
+     by more than one source. Copy the URLs exactly as listed and only
+     list a page whose retrieved content genuinely backs this claim. Omit
+     or leave empty when no other retrieved page supports it. Never list a
+     URL that is not in the retrieved sources, and never list a page merely
+     because it is on the same topic.
 
 Only attach claims a source genuinely supports. Fewer grounded claims are
 better than invented ones. If none of the retrieved sources support a claim,
@@ -85,9 +99,10 @@ no code fences):
       "claims": [
         {
           "claim_text": "<one sentence the source supports>",
-          "dates": [{"date_kind": "publication_date", "date": "YYYY-MM-DD"}],
+          "dates": [{"date_kind": "publication_date", "date": "2018-06-19"}],
           "suggested_claim_type": "fact",
-          "critical": false
+          "critical": false,
+          "also_supported_by": ["<another retrieved URL supporting the same claim>"]
         }
       ]
     }

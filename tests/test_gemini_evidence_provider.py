@@ -23,6 +23,8 @@ from providers.gemini.evidence_provider import (
     EVIDENCE_NOTE_PREFIX,
     PROMPT_VERSION,
     GeminiEvidenceProvider,
+    _normalize_whitespace,
+    _strip_markdown,
 )
 from tests.gemini_test_utils import FakeRawClient, make_client, noop_sleep
 
@@ -130,6 +132,78 @@ class TestEvidenceExtraction:
         fake = _structured_fake(_ev_payload(excerpts=("This fact was never in the page.",)))
         evidence = _provider(fake).get_evidence(_source())
         assert evidence == []
+
+
+# A heavily-linked page (typical of Wikipedia) arrives as markdown whose link
+# syntax interleaves the prose. A model quoting "verbatim" reproduces the
+# rendered prose, so grounding must compare rendered-to-rendered.
+LINKED_PAGE = (
+    "[Jump to navigation](https://example.test/nav)\n"
+    "\n"
+    "**Hawking radiation** is radiation released outside a "
+    "[black hole](https://example.test/black_hole \"Black hole\")'s "
+    "[event horizon](https://example.test/event_horizon \"Event horizon\") due to "
+    "quantum effects according to a model developed by "
+    "[Stephen Hawking](https://example.test/hawking \"Stephen Hawking\") in 1974."
+    "^[\\[1\\]](https://example.test/cite_note-1)"
+)
+
+RENDERED_QUOTE = (
+    "Hawking radiation is radiation released outside a black hole's event horizon "
+    "due to quantum effects according to a model developed by Stephen Hawking in 1974."
+)
+
+
+class TestMarkdownGrounding:
+    def _linked_provider(self, excerpts):
+        page = RetrievedSource(
+            url=PAPER,
+            title="Linked page",
+            content=LINKED_PAGE,
+            domain="example.test",
+        )
+        return _provider(_structured_fake(_ev_payload(excerpts=excerpts)), sources=[page])
+
+    def test_rendered_prose_quote_is_grounded_in_linked_markdown(self):
+        # Regression: this exact shape silently produced zero evidence in a real
+        # run, because the quote was compared against raw markdown source.
+        (item,) = self._linked_provider([RENDERED_QUOTE]).get_evidence(_source())
+        assert item.excerpt == RENDERED_QUOTE
+
+    def test_bold_wrapped_quote_is_grounded(self):
+        page = RetrievedSource(
+            url=PAPER,
+            title="Bold page",
+            content="The **event horizon** is a boundary.",
+            domain="example.test",
+        )
+        provider = _provider(
+            _structured_fake(_ev_payload(excerpts=("The event horizon is a boundary.",))),
+            sources=[page],
+        )
+        (item,) = provider.get_evidence(_source())
+        assert item.excerpt == "The event horizon is a boundary."
+
+    def test_fabricated_text_on_linked_page_is_still_dropped(self):
+        # The markup fix must not weaken the anti-fabrication boundary.
+        provider = self._linked_provider(
+            ["Hawking radiation is a confirmed experimental observation rather than a model."]
+        )
+        assert provider.get_evidence(_source()) == []
+
+    def test_strip_markdown_preserves_the_words_only(self):
+        # Link targets/bullets/emphasis markers vanish; prose is untouched.
+        assert _strip_markdown(LINKED_PAGE).count("Hawking radiation") == 1
+        assert "https://example.test" not in _strip_markdown(LINKED_PAGE)
+        assert "**" not in _strip_markdown(LINKED_PAGE)
+
+    def test_normalization_is_idempotent(self):
+        once = _normalize_whitespace(LINKED_PAGE)
+        assert _normalize_whitespace(_strip_markdown(LINKED_PAGE)) == once
+
+    def test_plain_prose_page_is_unaffected(self):
+        # The original fixture has no markup; behaviour must not regress.
+        assert _normalize_whitespace(CONTENT) == _normalize_whitespace(_strip_markdown(CONTENT))
 
 
 class TestEvidenceBoundary:
@@ -251,6 +325,83 @@ class TestProvenanceAndPrompt:
         fake = _structured_fake()
         with pytest.raises(FileNotFoundError):
             _provider(fake, prompt_path="prompts/missing/evidence.txt").get_evidence(_source())
+
+
+class TestDeterministicRecoveryBackstop:
+    """Recovery on the real provider, driven through the real retrieval path.
+
+    These complement the checker-level suite: that one drives a stub provider,
+    so it cannot catch a cache-shape or grounding mistake in this class.
+    """
+
+    RECOVERY_CLAIM = (
+        "Octopuses have three hearts: two branchial hearts and a systemic heart."
+    )
+
+    def _recovered_after_get_evidence(self, fake, content=CONTENT):
+        """Run the normal path, then recover from whatever it cached."""
+        provider = _provider(fake, sources=[RetrievedSource(url=PAPER, title="t", content=content, domain="example.test")])
+        source = _source()
+        provider.get_evidence(source)  # populates the content cache
+        from agents.research.models import FactClaim
+
+        claim = FactClaim(
+            claim_id="cl_test",
+            claim_text=self.RECOVERY_CLAIM,
+            claim_type="factual",
+            source_ids=[source.source_id],
+            critical=True,
+        )
+        return provider.recover_evidence(source, claim)
+
+    def test_recovery_uses_content_cached_by_the_normal_path(self):
+        recovered = self._recovered_after_get_evidence(_structured_fake(_ev_payload(excerpts=())))
+        assert len(recovered) == 1
+        evidence = recovered[0]
+        evidence.validate()
+        assert evidence.source_id == _source().source_id
+        assert evidence.evidence_type == "direct_statement"
+        # The note must say the evidence was recovered, not model-extracted,
+        # so an artifact reader can tell the two paths apart.
+        assert "recover" in evidence.notes.lower()
+        assert EVIDENCE_NOTE_PREFIX not in evidence.notes
+
+    def test_recovered_excerpt_is_verbatim_in_the_retrieved_content(self):
+        recovered = self._recovered_after_get_evidence(_structured_fake(_ev_payload(excerpts=())))
+        assert recovered[0].excerpt in CONTENT
+
+    def test_recovery_returns_nothing_when_the_page_lacks_the_claim(self):
+        unrelated = "Tidal forces shape icy moons in the outer solar system."
+        assert self._recovered_after_get_evidence(
+            _structured_fake(_ev_payload(excerpts=())), content=unrelated
+        ) == []
+
+    def test_recovery_never_calls_the_model(self):
+        """Recovery is deterministic: no SDK call, no network."""
+        fake = _structured_fake(_ev_payload(excerpts=()))
+        self._recovered_after_get_evidence(fake)
+        # One call, from get_evidence. recover_evidence adds none.
+        assert len(fake.calls) == 1
+
+    def test_recovery_is_idempotent(self):
+        provider = _provider(
+            _structured_fake(_ev_payload(excerpts=())),
+            sources=[RetrievedSource(url=PAPER, title="t", content=CONTENT, domain="example.test")],
+        )
+        source = _source()
+        provider.get_evidence(source)
+        from agents.research.models import FactClaim
+
+        claim = FactClaim(
+            claim_id="cl_test",
+            claim_text=self.RECOVERY_CLAIM,
+            claim_type="factual",
+            source_ids=[source.source_id],
+            critical=True,
+        )
+        first = provider.recover_evidence(source, claim)
+        second = provider.recover_evidence(source, claim)
+        assert [e.evidence_id for e in first] == [e.evidence_id for e in second]
 
 
 class TestOfflineOnly:

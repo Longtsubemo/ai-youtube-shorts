@@ -40,7 +40,11 @@ Every important factual claim carries:
 - `claim_id` — stable, deterministic `cl_<sha1(text)[:10]>`
 - claim text
 - `claim_type` (see below)
-- `source_ids` (supporting sources; each must resolve inside the package)
+- `source_ids` — the **one or more** supporting sources, primary first,
+  unique entries, each resolving inside the package. The model may declare
+  that another retrieved page supports the same claim; that URL is resolved
+  to a real source id. Unresolvable declarations are rejected, and sources
+  are never attached to a claim that did not declare them.
 - `verification_status` — provisional, set in research; settled later
 - `confidence` — a 0–1 heuristic from backing source tiers, **not** a
   fact-check result

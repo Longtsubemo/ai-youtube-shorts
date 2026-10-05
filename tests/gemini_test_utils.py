@@ -145,8 +145,20 @@ def grounded_result(
     )
 
 
-def valid_research_payload(urls=("https://example.test/papers/octopus",)) -> dict:
-    """A schema-valid research payload (sources + claims) for offline tests."""
+def valid_research_payload(
+    urls=("https://example.test/papers/octopus",),
+    critical_index: int | None = None,
+) -> dict:
+    """A schema-valid research payload (sources + claims) for offline tests.
+
+    `critical_index` marks one source's claim critical; it defaults to None so
+    fixtures are non-critical by default. These payloads exercise provider
+    grounding, provenance and schema handling, not the Stage-3 corroboration
+    policy. A blanket critical default made every single-source payload a
+    critical claim that the producer-side guard rejects by design, so callers
+    that genuinely mean to exercise criticality pass the index explicitly and
+    supply enough eligible non-discovery sources for it.
+    """
     sources = []
     for index, url in enumerate(urls):
         sources.append(
@@ -171,7 +183,7 @@ def valid_research_payload(urls=("https://example.test/papers/octopus",)) -> dic
                             else [{"date_kind": "publication_date", "date": "2020-05-12"}]
                         ),
                         "suggested_claim_type": "fact",
-                        "critical": index == 0,
+                        "critical": index == critical_index,
                     }
                 ],
             }

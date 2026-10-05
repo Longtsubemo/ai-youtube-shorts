@@ -1,0 +1,222 @@
+# Self-hosted (open-source) Firecrawl for the isolated retrieval experiment.
+#
+# This is an EXPERIMENT stack, not a production deployment, and it is NOT wired
+# into the AI YouTube pipeline. Nothing under agents/, providers/, or pipeline/
+# reads it.
+#
+# Derived from the official Firecrawl compose
+# (https://github.com/firecrawl/firecrawl/blob/main/docker-compose.yaml, fetched
+# 2026-10-01) with five deliberate, documented deviations. Everything else is
+# upstream as-shipped.
+#
+#   1. PREBUILT IMAGES INSTEAD OF `build:`.
+#      Upstream ships three services with `build: apps/...` and the
+#      `ghcr.io` alternatives commented out, so the documented
+#      `docker compose up --build` compiles a Node/pnpm/turbo multi-stage
+#      build of three images. On a 7.6 GiB Docker VM that is a bad trade for an
+#      experiment, so the prebuilt images are used instead.
+#
+#   2. MEMORY CAPS CUT ~4x. Upstream declares mem_limit 8G (api) + 4G
+#      (playwright) = 12 GiB, and sets memswap_limit EQUAL to mem_limit, so a
+#      container that hits its cap is OOM-killed rather than slowed. This host
+#      has 7.6 GiB total. Caps are lowered to 3G + 1.5G = 4.5 GiB.
+#
+#   3. CONCURRENCY CUT ~8x. Upstream defaults are sized for a server:
+#      NUM_WORKERS_PER_QUEUE=8 (per queue), CRAWL_CONCURRENT_REQUESTS=10 (which
+#      becomes Playwright MAX_CONCURRENT_PAGES, i.e. 10 concurrent headless
+#      Chromium contexts), MAX_CONCURRENT_JOBS=5, BROWSER_POOL_SIZE=5.
+#      Reduced to 1/1/2/1 for a single-user experiment.
+#
+#   4. FOUNDATIONDB SERVICES DROPPED. The experimental `NUQ_BACKEND=fdb` queue
+#      backend is not used; Postgres is the backend.
+#
+#   5. REUSES THE EXISTING LOCAL SEARXNG via `SEARXNG_ENDPOINT` pointing at
+#      host.docker.internal:8080. Upstream leaves this unset, in which case
+#      /v2/search silently falls back to DuckDuckGo scraping. Reusing SearXNG
+#      means the search tier stays self-hosted end to end. Requires the
+#      experiments/retrieval/searxng stack to be running first.
+#
+#   6. `NUQ_WORKER_COUNT` AND A NODE HEAP CAP (empirically required).
+#      `node dist/src/harness.js --start-docker` starts every worker as a
+#      separate Node process inside the ONE api container: api, worker,
+#      extract-worker, NUQ_WORKER_COUNT nuq-workers, a prefetch worker and a
+#      reconciler. The number of nuq-workers comes from `NUQ_WORKER_COUNT`
+#      (default 5) - NOT from `NUM_WORKERS_PER_QUEUE`, which is the variable
+#      upstream's compose documents and which does not control process count at
+#      all. Upstream never sets NUQ_WORKER_COUNT.
+#      Measured on this host: with the default 5 nuq-workers the api container
+#      spawns 10 Node processes and was OOM-killed (exit 137) at a 3g cap. With
+#      NUQ_WORKER_COUNT=1 it spawns 6. NODE_OPTIONS caps the V8 old-space heap
+#      per process so the container fails predictably instead of being killed.
+#
+# Auth: USE_DB_AUTHENTICATION=false means no API key, no Authorization header,
+# and no Supabase. The port is published to 127.0.0.1 only.
+#
+# Start:  docker compose -f experiments/retrieval/firecrawl_selfhost/docker-compose.yml up -d
+# Stop:   docker compose -f experiments/retrieval/firecrawl_selfhost/docker-compose.yml down
+# Logs:   docker compose -f experiments/retrieval/firecrawl_selfhost/docker-compose.yml logs -f api
+#
+# Readiness: curl http://127.0.0.1:3002/v0/health/readiness
+# Expect roughly 3.5-4.5 GiB of container memory in total under this tuning.
+name: retrieval-firecrawl
+
+x-common-env: &common-env
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+  REDIS_RATE_LIMIT_URL: ${REDIS_RATE_LIMIT_URL:-redis://redis:6379}
+  PLAYWRIGHT_MICROSERVICE_URL: http://playwright-service:3000/scrape
+  POSTGRES_USER: ${POSTGRES_USER:-postgres}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (copy .env.example)}
+  POSTGRES_DB: ${POSTGRES_DB:-postgres}
+  POSTGRES_HOST: nuq-postgres
+  POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+  USE_DB_AUTHENTICATION: "false"
+  # Deviation 3: upstream defaults are 8 / 10 / 5 / 5.
+  NUM_WORKERS_PER_QUEUE: ${NUM_WORKERS_PER_QUEUE:-1}
+  CRAWL_CONCURRENT_REQUESTS: ${CRAWL_CONCURRENT_REQUESTS:-2}
+  MAX_CONCURRENT_JOBS: ${MAX_CONCURRENT_JOBS:-1}
+  BROWSER_POOL_SIZE: ${BROWSER_POOL_SIZE:-1}
+  # Deviation 6: this - not NUM_WORKERS_PER_QUEUE - controls how many Node
+  # worker processes the harness spawns inside this one container.
+  NUQ_WORKER_COUNT: ${NUQ_WORKER_COUNT:-1}
+  NODE_OPTIONS: ${NODE_OPTIONS:---max-old-space-size=384}
+  ENV: local
+  # Deviation 5: reuse the experiment's own SearXNG instead of DuckDuckGo.
+  SEARXNG_ENDPOINT: ${SEARXNG_ENDPOINT:-http://host.docker.internal:8080}
+  LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
+
+services:
+  playwright-service:
+    # Deviation 1: prebuilt image instead of `build: apps/playwright-service-ts`.
+    image: ghcr.io/firecrawl/playwright-service:latest
+    environment:
+      PORT: 3000
+      BLOCK_MEDIA: ${BLOCK_MEDIA:-true}
+      MAX_CONCURRENT_PAGES: ${CRAWL_CONCURRENT_REQUESTS:-2}
+    networks:
+      - backend
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Deviation 2: upstream 2.0 cpu / 4G.
+    cpus: 1.0
+    mem_limit: 1500m
+    memswap_limit: 1500m
+    tmpfs:
+      - /tmp/.cache:noexec,nosuid,size=512m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
+
+  api:
+    # Deviation 1: prebuilt image instead of `build: apps/api`.
+    image: ghcr.io/firecrawl/firecrawl:latest
+    command: node dist/src/harness.js --start-docker
+    environment:
+      <<: *common-env
+      HOST: "0.0.0.0"
+      PORT: ${INTERNAL_PORT:-3002}
+      WORKER_PORT: ${WORKER_PORT:-3005}
+      EXTRACT_WORKER_PORT: ${EXTRACT_WORKER_PORT:-3004}
+      NUQ_RABBITMQ_URL: amqp://rabbitmq:5672
+      HARNESS_STARTUP_TIMEOUT_MS: ${HARNESS_STARTUP_TIMEOUT_MS:-120000}
+    depends_on:
+      redis:
+        condition: service_started
+      playwright-service:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+      nuq-postgres:
+        condition: service_healthy
+    ports:
+      # localhost only, matching the SearXNG stack.
+      - "127.0.0.1:${PORT:-3002}:${INTERNAL_PORT:-3002}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    # Deviation 2: upstream 4.0 cpu / 8G.
+    cpus: 2.0
+    mem_limit: 3g
+    memswap_limit: 3g
+    networks:
+      - backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
+
+  redis:
+    image: redis:alpine
+    networks:
+      - backend
+    command: redis-server --bind 0.0.0.0
+    mem_limit: 256m
+    memswap_limit: 256m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+        compress: "true"
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    networks:
+      - backend
+    command: rabbitmq-server
+    mem_limit: 512m
+    memswap_limit: 512m
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 5s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "2"
+        compress: "true"
+
+  nuq-postgres:
+    # Deviation 1: prebuilt image instead of `build: apps/nuq-postgres`.
+    # This is NOT stock postgres: pgvector and pg_cron are baked in.
+    image: ghcr.io/firecrawl/nuq-postgres:latest
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (copy .env.example)}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    networks:
+      - backend
+    mem_limit: 1g
+    memswap_limit: 1g
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
+
+networks:
+  backend:
+    driver: bridge

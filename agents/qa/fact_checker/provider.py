@@ -47,7 +47,9 @@ def build_fact_check_components(
     fixture at `evidence_data_path`. `name == "gemini"` builds the real Gemini
     pair; `retriever="firecrawl"` wires verification web
     retrieval for the gemini evidence provider behind a `ResearchRetriever`
-    (reusing the Stage-2 Firecrawl seam). No other provider accepts a retriever.
+    (reusing the Stage-2 Firecrawl seam), and `retriever="hybrid"` reuses the
+    Stage-2 hybrid seam (SearXNG discovery, BeautifulSoup fetch, bounded
+    self-hosted Firecrawl fallback). No other provider accepts a retriever.
     """
     if name in (None, "", "mock"):
         if retriever is not None:
@@ -76,6 +78,12 @@ def build_fact_check_components(
 
             firecrawl_config = FirecrawlConfig.from_env(env if env is not None else os.environ)
             built_retriever = FirecrawlResearchRetriever(config=firecrawl_config)
+        elif retriever == "hybrid":
+            from providers.firecrawl.config import FirecrawlConfig
+            from providers.hybrid.retriever import HybridResearchRetriever
+
+            firecrawl_config = FirecrawlConfig.from_env(env if env is not None else os.environ)
+            built_retriever = HybridResearchRetriever(firecrawl_config=firecrawl_config)
         elif retriever is not None:
             raise EvidenceProviderError(f"unknown retriever: {retriever!r}")
 

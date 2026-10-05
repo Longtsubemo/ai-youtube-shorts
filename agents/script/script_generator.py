@@ -400,8 +400,9 @@ def main() -> int:
     parser.add_argument(
         "--result",
         type=Path,
-        default=Path("data") / "mock" / "fact_check_result.json",
-        help="FactCheckResult artifact JSON (default: data/mock/fact_check_result.json)",
+        default=None,
+        help="FactCheckResult artifact JSON; REQUIRED with --research unless --preview "
+             "(default for the no---research path: data/mock/fact_check_result.json)",
     )
     parser.add_argument(
         "--provider",
@@ -423,7 +424,14 @@ def main() -> int:
     parser.add_argument(
         "--allow-review-content",
         action="store_true",
-        help="allow generation when the package verdict is REVIEW (fact-check path only)",
+        help="allow generation when the package verdict is REVIEW",
+    )
+    parser.add_argument(
+        "--preview",
+        action="store_true",
+        help="ISOLATED PREVIEW ONLY: generate from --research with no FactCheckResult, "
+             "so the whole package is the working set and script.result_id stays empty. "
+             "Never use this for a pipeline run.",
     )
     parser.add_argument(
         "--out",
@@ -447,9 +455,10 @@ def _run_from_fact_check(args) -> int:
         run_script_generation,
     )
 
-    if not args.result.is_file():
-        raise SystemExit(f"[script_generator] FactCheckResult not found: {args.result}")
-    result = FactCheckResult.from_json(args.result.read_text(encoding="utf-8"))
+    result_path = args.result or DEFAULT_FACT_CHECK_RESULT_PATH
+    if not result_path.is_file():
+        raise SystemExit(f"[script_generator] FactCheckResult not found: {result_path}")
+    result = FactCheckResult.from_json(result_path.read_text(encoding="utf-8"))
     package = _build_mock_package()
     run_id = args.run_id or uuid.uuid4().hex[:12]
     config = ScriptConfig(allow_review_content=args.allow_review_content)
@@ -467,7 +476,35 @@ def _run_from_fact_check(args) -> int:
 
 
 def _run_from_package(args) -> int:
+    """Full-pipeline Stage 4: generate from a package BOUND to Stage 3.
+
+    The FactCheckResult is mandatory here. It supplies the approved-claim
+    whitelist and the `result_id` the Script must inherit; without it the
+    provider would have no verdict to honor, so the only way to run this path
+    unbound is the explicit `--preview` opt-in used for isolated Stage-4
+    testing. A missing/invalid result fails before any artifact is written.
+    """
     from agents.script.provider import ScriptProviderError, build_script_provider
+    from agents.script.stage import DEFAULT_FACT_CHECK_RESULT_PATH
+
+    if args.preview and args.result is not None:
+        print("[script_generator] --preview and --result are mutually exclusive")
+        return 2
+
+    fact_check_result = None
+    if not args.preview:
+        result_path = args.result
+        if result_path is None:
+            print(
+                "[script_generator] --research requires --result <fact_check_result.json> "
+                "so the script is bound to Stage-3 approved claims. "
+                "Use --preview only for isolated Stage-4 testing "
+                f"(result would otherwise default to {DEFAULT_FACT_CHECK_RESULT_PATH})."
+            )
+            return 2
+        if not result_path.is_file():
+            print(f"[script_generator] provider error: FactCheckResult not found: {result_path}")
+            return 2
 
     if load_dotenv is not None:
         load_dotenv()  # honour GEMINI_API_KEY/GEMINI_MODEL from .env (ignored by git)
@@ -476,11 +513,23 @@ def _run_from_package(args) -> int:
         raise SystemExit(f"[script_generator] ResearchPackage not found: {args.research}")
     package = ResearchPackage.from_json(args.research.read_text(encoding="utf-8"))
 
+    if fact_check_result is None and not args.preview:
+        try:
+            fact_check_result = FactCheckResult.from_json(result_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            print(f"[script_generator] provider error: invalid FactCheckResult: {exc}")
+            return 2
+
     run_id = args.run_id or package.run_id
     config = ScriptConfig(allow_review_content=args.allow_review_content)
     try:
         provider = build_script_provider(args.provider)
-        generation = provider.generate(package, config=config, run_id=run_id)
+        generation = provider.generate(
+            package,
+            config=config,
+            run_id=run_id,
+            fact_check_result=fact_check_result,
+        )
     except ScriptProviderError as exc:
         print(f"[script_generator] provider error: {exc}")
         return 2

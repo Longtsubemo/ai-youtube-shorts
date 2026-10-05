@@ -112,6 +112,7 @@ def test_mock_default_from_research_package(monkeypatch, tmp_path):
         "mock",
         "--research",
         str(research),
+        "--preview",
         "--run-id",
         "pkg_cli_mock",
         "--out",
@@ -135,6 +136,7 @@ def test_gemini_provider_stamps_provenance(monkeypatch, tmp_path):
         "gemini",
         "--research",
         str(research),
+        "--preview",
         "--run-id",
         "pkg_cli_gem",
         "--out",
@@ -164,6 +166,7 @@ def test_gemini_without_key_exits_error_and_writes_nothing(monkeypatch, tmp_path
         "gemini",
         "--research",
         str(research),
+        "--preview",
         "--run-id",
         "pkg_cli_bad",
         "--out",
@@ -181,7 +184,7 @@ def test_generate_api_error_exits_error_and_writes_nothing(monkeypatch, tmp_path
     research = _cli_package_path(tmp_path)
 
     class ExplodingProvider:
-        def generate(self, package, config=None, run_id="", created_at=""):
+        def generate(self, package, config=None, run_id="", created_at="", fact_check_result=None):
             raise GeminiAPIError("upstream quota exhausted")
 
         produced_by = {}
@@ -194,6 +197,7 @@ def test_generate_api_error_exits_error_and_writes_nothing(monkeypatch, tmp_path
         "gemini",
         "--research",
         str(research),
+        "--preview",
         "--run-id",
         "pkg_cli_api",
         "--out",
@@ -230,6 +234,7 @@ def test_insufficient_package_exits_zero_writes_nothing(monkeypatch, tmp_path):
         "mock",
         "--research",
         str(research),
+        "--preview",
         "--run-id",
         "pkg_cli_tiny",
         "--out",
@@ -247,6 +252,7 @@ def test_missing_research_package_exits_error(monkeypatch, tmp_path):
         "mock",
         "--research",
         str(tmp_path / "does_not_exist.json"),
+        "--preview",
         "--out",
         str(tmp_path),
     )
