@@ -1,12 +1,4 @@
-"""Minimal pipeline state model.
-
-Tracks one production run through the pipeline stages. Agents and
-stages communicate through structured file-based data contracts (JSON),
-and the state records where each run is and what it has produced.
-
-Only the scaffolding is intentional here; stage implementations and
-artifact contracts are added as each stage is built.
-"""
+"""Minimal pipeline state model for 5-stage finance_mascot pipeline."""
 
 from __future__ import annotations
 
@@ -22,23 +14,13 @@ def _utc_now() -> str:
 
 
 class Stage(str, Enum):
-    """Ordered pipeline stages, matching the documented pipeline."""
+    """Ordered pipeline stages."""
 
-    TOPIC_DISCOVERY = "topic_discovery"
-    SEO_RESEARCH = "seo_research"
     TOPIC_SELECTION = "topic_selection"
-    RESEARCH = "research"
-    FACT_CHECK = "fact_check"
+    AI_RESEARCH = "ai_research"
     SCRIPT_GENERATION = "script_generation"
-    SCRIPT_QA = "script_qa"
     SCENE_PLANNING = "scene_planning"
-    PRODUCTION = "production"
     VIDEO_GENERATION = "video_generation"
-    AUDIO = "audio"
-    VIDEO_ASSEMBLY = "video_assembly"
-    QUALITY_CHECK = "quality_check"
-    PUBLISH = "publish"
-    ANALYTICS = "analytics"
 
 
 @dataclass
@@ -47,7 +29,7 @@ class PipelineState:
 
     run_id: str
     status: str = "initialized"
-    current_stage: Stage = Stage.TOPIC_DISCOVERY
+    current_stage: Stage = Stage.TOPIC_SELECTION
     created_at: str = field(default_factory=_utc_now)
     updated_at: str = field(default_factory=_utc_now)
     artifacts: dict[str, list[str]] = field(default_factory=dict)
@@ -70,11 +52,10 @@ class PipelineState:
         return cls(**data)
 
     def advance_to(self, stage: Stage) -> None:
-        """Record that the run has moved to a later pipeline stage."""
         self.current_stage = stage
         self.updated_at = _utc_now()
 
     def add_artifact(self, stage: Stage, path: str | Path) -> None:
-        """Record an artifact produced by a stage."""
         self.artifacts.setdefault(stage.value, []).append(str(path))
         self.updated_at = _utc_now()
+

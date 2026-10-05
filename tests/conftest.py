@@ -13,7 +13,6 @@ from agents.seo.models import ContentScores, Provenance, SignalScores, TopicCand
 
 ROOT = Path(__file__).resolve().parent.parent
 MOCK_DATA = ROOT / "data" / "mock"
-RESEARCH_EVIDENCE = MOCK_DATA / "research_evidence.json"
 SELECTION_DATA = MOCK_DATA / "topic_selection.json"
 
 
@@ -175,44 +174,3 @@ def sample_history():
 @pytest.fixture
 def history_provider(sample_history):
     return MockHistoryProvider(sample_history.records)
-
-
-# --------------------------------------------------------------------------- #
-# Stage-2 (research) fixtures
-# --------------------------------------------------------------------------- #
-
-
-def _minimal_selection(topic_id: str, title: str) -> dict:
-    """A minimal TopicSelection payload for synthetic agent tests."""
-    return {
-        "data": {
-            "selected_topic_id": topic_id,
-            "selected_topic": {"topic_id": topic_id, "title": title},
-        }
-    }
-
-
-@pytest.fixture
-def mock_research_provider():
-    from agents.research.provider import MockResearchProvider
-
-    return MockResearchProvider(data_path=RESEARCH_EVIDENCE)
-
-
-@pytest.fixture
-def mock_topic_selection():
-    from agents.research.stage import load_topic_selection
-
-    return load_topic_selection(SELECTION_DATA)
-
-
-@pytest.fixture
-def research_agent(mock_research_provider):
-    from agents.research.agent import ResearchAgent
-
-    return ResearchAgent(mock_research_provider, run_id="test-run-1")
-
-
-@pytest.fixture
-def minimal_selection():
-    return _minimal_selection

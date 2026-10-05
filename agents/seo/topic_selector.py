@@ -6,7 +6,7 @@ Usage:
 
 Loads mock/local candidates + history, scores them, selects a topic,
 prints the result, and writes a TopicSelection artifact (plus run state)
-under data/<run_id>/.
+under data/<run_id>/ using the flat artifact layout.
 """
 
 from __future__ import annotations
@@ -84,7 +84,7 @@ def main() -> int:
     if args.provider == "gemini":
         selection.produced_by = dict(provider.produced_by)
 
-    out_path = args.out or Path("data") / run_id / "research" / "topic_selection.json"
+    out_path = args.out or Path("data") / run_id / "topic_selection.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(selection.to_json(), encoding="utf-8")
 

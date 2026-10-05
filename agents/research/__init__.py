@@ -1,54 +1,22 @@
-"""Research stage (Stage 2).
+"""Stage 2: AI Research.
 
-Data flow (docs/RESEARCH_PIPELINE.md):
+Reads the Stage 1 ``topic_selection.json`` artifact and writes
+``research.json``. Gemini's own knowledge is the research basis: there is no
+web retrieval, no source harvesting and no corroboration in this stage.
 
-    TopicSelection -> ResearchAgent -> ResearchProvider
-                    -> SourceCandidate -> Source/FactClaim
-                    -> ResearchPackage -> (future) Fact Checker
-
-Everything here works against local/mocked evidence; the research agent is
-deliberately provider-agnostic so a real web provider can be swapped in
-without touching agent logic. Claims leave the stage provisional - final
-verification belongs to the fact-check stage.
+CLI: ``python -m agents.research.ai_research_cli --run-id <run_id>``
 """
 
-from agents.research.agent import ResearchAgent
-from agents.research.classifier import classify_claim, compute_confidence
-from agents.research.models import (
-    ClaimDate,
-    FactClaim,
-    ResearchPackage,
-    ResearchPackageError,
-    Source,
+from agents.research.ai_research import (
+    generate_ai_research,
+    load_topic_selection,
+    write_ai_research,
 )
-from agents.research.provider import (
-    ClaimItem,
-    MockResearchProvider,
-    ResearchProvider,
-    ResearchProviderError,
-    SourceCandidate,
-    TopicDescriptor,
-    build_research_provider,
-)
-from agents.research.retriever import MockResearchRetriever, RetrievedSource, ResearchRetriever
+from agents.research.ai_research_models import AIResearch
 
 __all__ = [
-    "ResearchAgent",
-    "classify_claim",
-    "compute_confidence",
-    "ClaimDate",
-    "FactClaim",
-    "ResearchPackage",
-    "ResearchPackageError",
-    "Source",
-    "ClaimItem",
-    "MockResearchProvider",
-    "ResearchProvider",
-    "ResearchProviderError",
-    "SourceCandidate",
-    "TopicDescriptor",
-    "build_research_provider",
-    "MockResearchRetriever",
-    "RetrievedSource",
-    "ResearchRetriever",
+    "AIResearch",
+    "generate_ai_research",
+    "load_topic_selection",
+    "write_ai_research",
 ]

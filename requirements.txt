@@ -1,6 +1,5 @@
-# Minimal core dependencies for the current scaffold.
-# Real-provider SDKs are optional runtime deps used only behind an explicit
-# --provider gemini opt-in; the default mock path never needs them.
+# Minimal core dependencies for the 5-stage finance_mascot pipeline.
+# The default mock path for Stage 1 never needs a provider SDK.
 
 python-dotenv>=1.0,<2
 
@@ -11,7 +10,3 @@ pytest>=7.0,<9          # test suite
 # Gemini provider (optional; required only for --provider gemini)
 google-genai>=2.23,<3   # official Gemini SDK
 pydantic>=2,<3          # structured-output schemas (pulled by google-genai too)
-
-# Firecrawl retrieval provider (optional; required only for
-# --provider gemini --retriever firecrawl)
-firecrawl>=4.22,<5      # official Firecrawl SDK (v2 Search, keyless-capable)
