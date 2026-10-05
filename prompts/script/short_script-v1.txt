@@ -14,6 +14,7 @@ you must not pretend otherwise.
 - tone: {tone}
 - format: YouTube Short, approximately {target_duration_seconds} seconds, and
   never shorter than {duration_min_seconds} seconds
+- length: set by a spoken-word budget, not a guess - see "Length budget" below
 
 # The on-screen character
 
@@ -73,6 +74,36 @@ expected and encouraged. Personalized directives are not.
 - Use a concrete example where one helps.
 - Assume a broad audience with no finance background.
 
+# Length budget
+
+Length is decided by **how many words are actually spoken**, not by how long
+you imagine the video feels. Use words as your unit and derive seconds from
+them.
+
+- Total spoken narration: **165-190 words**, counting only the words inside
+  `narration`. That is the whole script.
+- Natural delivery for a finance Short runs about **2.5 spoken words per
+  second** (roughly 150 words per minute). At that pace 165-190 words is
+  around 66-76 seconds, which sits inside the {target_duration_seconds}-second
+  target and clearly above the {duration_min_seconds}-second floor.
+- Count the words once, across the whole script. The `sections` **split** that
+  same narration; they do not add words to it and nothing may be repeated
+  between `narration` and the sections.
+- Do not pad the script with filler to reach a number, and do not cram the idea
+  into a breathless run. If the material is thin, stay inside the band by
+  keeping sentences short and concrete rather than by padding.
+- Stay natural. The budget is a guide for length, not a rhythm to recite. Do
+  not mention counting, timing, or this budget in the narration itself.
+
+Per section, take your share of the total and compute timing from the words you
+actually wrote:
+
+- aim for roughly `total words / number of sections` words per section, letting
+  the hook and the payoff run a little longer than the middle
+- `estimated_seconds` = that section's word count / 2.5, rounded to a whole
+  second
+- the `estimated_seconds` values should add up to a total between 65 and 80
+
 # What NOT to produce
 
 - No web research, no browsing, no searches.
@@ -84,15 +115,18 @@ expected and encouraged. Personalized directives are not.
 # Fields to fill
 
 - `title`: the on-screen title for the Short.
-- `narration`: the full spoken script, roughly {target_duration_seconds}
-  seconds when read at a natural pace.
+- `narration`: the full spoken script, 165-190 words. The sections together
+  carry exactly these same words, so do not repeat or expand anything here.
 - `sections`: 3-6 ordered segments. Together their `narration` fields must
-  contain the same words as `narration`.
+  contain exactly the same words as `narration` - the same script, split up.
   - `section_id`: sequential id such as "s1", "s2".
   - `role`: what the beat does - for example hook, setup, explanation, example,
     reveal, payoff, closing.
-  - `narration`: the exact words spoken in this segment. Never empty.
-  - `estimated_seconds`: rough spoken length for this segment.
+  - `narration`: the exact words spoken in this segment. Never empty. All
+    sections together must total 165-190 words.
+  - `estimated_seconds`: this section's word count divided by 2.5, rounded to a
+    whole second. Compute it from the words you actually wrote - do not guess it
+    and do not aim it at the target.
   - `visual_hint`: one short line describing what the fox mascot or the scene
     could be doing on screen. This is a visual note, never spoken words.
 
@@ -109,7 +143,7 @@ no code fences):
       "section_id": "s1",
       "role": "hook",
       "narration": "<the words spoken in this segment>",
-      "estimated_seconds": 10,
+      "estimated_seconds": 14,
       "visual_hint": "<what the mascot or scene does on screen>"
     }
   ]

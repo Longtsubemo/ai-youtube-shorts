@@ -892,6 +892,146 @@ class TestPrompt:
 
 
 # --------------------------------------------------------------------------- #
+# 13b. the prompt carries a spoken-word budget instead of trusting invented
+#      section durations
+# --------------------------------------------------------------------------- #
+
+
+class TestPromptWordBudget:
+    """The live run produced 142 words against a 70s target (~57s spoken).
+
+    The fix is a writing instruction, not a runtime gate: the prompt now asks
+    for a measurable word budget and requires `estimated_seconds` to be derived
+    from that word count rather than invented.
+    """
+
+    LOW = 165
+    HIGH = 190
+    WORDS_PER_SECOND = 2.5
+
+    @staticmethod
+    def _prompt() -> str:
+        return PROMPT_PATH.read_text(encoding="utf-8")
+
+    @classmethod
+    def _flat(cls) -> str:
+        """Prompt text with every run of whitespace collapsed to one space.
+
+        The prompt is hard-wrapped prose, so assertions must not depend on where
+        a line happens to break.
+        """
+        return re.sub(r"\s+", " ", cls._prompt()).lower()
+
+    def test_prompt_states_the_spoken_word_budget(self):
+        prompt = self._prompt()
+        assert f"{self.LOW}-{self.HIGH} words" in prompt
+
+    def test_prompt_states_the_speaking_rate(self):
+        prompt = self._prompt()
+        assert "2.5 spoken words per" in prompt
+        assert "150 words per minute" in prompt
+
+    def test_prompt_derives_seconds_from_words(self):
+        prompt = self._prompt()
+        assert "word count / 2.5" in prompt
+        assert "derive seconds from" in prompt.lower()
+
+    def test_prompt_requires_estimated_seconds_to_be_computed_not_guessed(self):
+        prompt = self._prompt()
+        assert "do not guess it" in prompt
+        assert "do not aim it at the target" in prompt
+
+    def test_prompt_ties_section_length_to_the_total(self):
+        flat = self._flat()
+        assert "total words / number of sections" in flat
+        assert "all sections together must total 165-190 words." in flat
+
+    def test_prompt_forbids_double_counting_narration_and_sections(self):
+        prompt = self._prompt()
+        assert "they do not add words to it" in prompt
+        assert "do not repeat or expand anything here" in prompt
+
+    def test_prompt_forbids_padding(self):
+        flat = self._flat()
+        assert "do not pad the script with filler" in flat
+        assert "rather than by padding" in flat
+
+    def test_prompt_keeps_the_narration_natural(self):
+        flat = self._flat()
+        assert "not a rhythm to recite" in flat
+        assert (
+            "do not mention counting, timing, or this budget in the narration itself." in flat
+        )
+
+    def test_budget_band_maps_into_the_65_80_second_window(self):
+        """The stated word range must actually land inside 65-80s at 2.5 w/s."""
+        low_seconds = self.LOW / self.WORDS_PER_SECOND
+        high_seconds = self.HIGH / self.WORDS_PER_SECOND
+        assert 65 <= low_seconds <= 80
+        assert 65 <= high_seconds <= 80
+        assert DURATION_MIN_SECONDS < low_seconds
+
+    def test_budget_band_clears_the_live_failure(self):
+        """The 142-word live result must fall outside the band, and be under 60s."""
+        assert not (self.LOW <= 142 <= self.HIGH)
+        assert 142 / self.WORDS_PER_SECOND < DURATION_MIN_SECONDS
+
+    def test_prompt_still_anchors_the_duration_tokens(self):
+        prompt = self._prompt()
+        assert "{target_duration_seconds}" in prompt
+        assert "{duration_min_seconds}" in prompt
+        assert "never shorter than {duration_min_seconds} seconds" in prompt
+        assert "between 65 and 80" in prompt
+
+    def test_prompt_still_declares_no_qa_in_the_output(self):
+        prompt = self._prompt()
+        assert "No quality score, no PASS/FAIL, no confidence rating, no verdict." in prompt
+
+    # -- preserved channel / style constraints ------------------------------ #
+
+    def test_word_budget_did_not_disturb_mascot_rule(self):
+        prompt = self._prompt()
+        assert "**The mascot DOES NOT SPEAK.**" in prompt
+        assert "Never write narration for the mascot" in prompt
+        assert "No lines for the mascot." in prompt
+
+    def test_word_budget_did_not_disturb_finance_safety(self):
+        prompt = self._prompt()
+        assert '"you should buy"' in prompt
+        assert '"you must invest in"' in prompt
+        assert '"this stock will"' in prompt
+        assert "Do NOT predict prices, returns, or outcomes." in prompt
+        assert "personalized investment, tax, or financial advice" in prompt
+
+    def test_word_budget_did_not_disturb_optional_detective_framing(self):
+        prompt = self._prompt()
+        assert "style, not a mandatory formula" in prompt
+        assert (
+            "equally valid structures include a straight question, a story, a comparison"
+            in self._flat()
+        )
+
+    def test_word_budget_did_not_disturb_no_browsing_or_citations(self):
+        prompt = self._prompt()
+        assert "No web research, no browsing, no searches." in prompt
+        assert "No citations, no URLs, no source names, no links." in prompt
+        assert "No claims about verifiability, corroboration" in prompt
+
+    def test_word_budget_did_not_disturb_structure_requirements(self):
+        prompt = self._prompt()
+        assert "3-6 ordered segments" in prompt
+        assert "curiosity in the first sentence" in prompt
+        assert "payoff or reveal" in prompt
+        assert "never invent a figure" in prompt
+
+    def test_prompt_still_renders_with_no_leftover_tokens(self, selection, research, default_config):
+        provider = _gemini_provider(default_config, FakeRawClient())
+        rendered = provider._render_prompt(build_script_context(selection, research))
+        assert re.search(r"\{[a-z_]+\}", rendered) is None
+        assert f"{self.LOW}-{self.HIGH} words" in rendered
+
+
+# --------------------------------------------------------------------------- #
 # 14. structured output path
 # --------------------------------------------------------------------------- #
 
@@ -1024,3 +1164,50 @@ class TestNoQaContract:
         )
         script = generate_script(selection, weird)
         assert script.narration.strip()
+
+    # -- the word-budget fix must stay in the prompt, not become a runtime gate -- #
+
+    def test_model_carries_no_word_count_or_duration_estimate(self):
+        """No runtime word-count field was introduced to enforce the budget."""
+        data = Script(topic_id="t", title="t").to_dict()
+        for field in (
+            "word_count",
+            "words",
+            "spoken_seconds",
+            "actual_seconds",
+            "measured_seconds",
+            "duration_actual",
+            "duration_estimate",
+        ):
+            assert field not in data, f"Stage 3 must not carry a runtime {field}"
+        assert "word_count" not in ScriptSection(
+            section_id="s1", role="hook", narration="w"
+        ).to_dict()
+
+    def test_validate_does_not_enforce_a_word_budget(self):
+        """A 3-word script still validates: the budget is a prompt instruction."""
+        script = Script(
+            topic_id="t",
+            title="t",
+            narration="Too short.",
+            sections=[ScriptSection("s1", "hook", "Too short.")],
+        )
+        assert script.validate() is script
+        assert len(script.narration.split()) == 2
+
+    def test_short_and_long_narration_are_both_accepted(self, selection, research):
+        """No duration-based rejection: length never fails closed."""
+        for narration in ("Short.", "word " * 900):
+            script = generate_script(
+                selection,
+                AIResearch(topic_id=selection.selected_topic_id, explanation=narration),
+            )
+            assert script.validate() is not None
+
+    def test_stage_defines_no_duration_gate(self):
+        """No word-count or duration rejection helper exists in the stage."""
+        import agents.script.stage as stage_module
+
+        source = Path(stage_module.__file__).read_text(encoding="utf-8")
+        assert "word_count" not in source
+        assert "len(script.narration.split())" not in source
