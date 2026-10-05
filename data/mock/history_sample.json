@@ -1,9 +1,9 @@
 [
   {
     "video_id": "vid_mock_0001",
-    "topic_id": "t_octopus_hearts",
-    "pillar": "science",
-    "topic_type": "surprising_fact",
+    "topic_id": "t_compounding_tuition",
+    "pillar": "wealth_engine",
+    "topic_type": "evergreen",
     "views": 5200,
     "retention": 0.58,
     "likes": 340,
@@ -14,9 +14,9 @@
   },
   {
     "video_id": "vid_mock_0002",
-    "topic_id": "t_black_hole",
-    "pillar": "space",
-    "topic_type": "scientific_concept",
+    "topic_id": "t_startup_pay_cut",
+    "pillar": "financial_autopsies",
+    "topic_type": "case_study",
     "views": 3100,
     "retention": 0.51,
     "likes": 210,

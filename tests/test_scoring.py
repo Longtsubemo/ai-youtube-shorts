@@ -98,8 +98,8 @@ class TestScoreCalculation:
     def test_history_sets_historical_fit_and_blends(self, default_config, candidate, config_factory):
         history = SelectionHistory.from_records(
             [
-                HistoricalRecord(video_id="v1", topic_id="t1", pillar="science", topic_type="surprising_fact", views=4000),
-                HistoricalRecord(video_id="v2", topic_id="t2", pillar="science", topic_type="surprising_fact", views=2000),
+                HistoricalRecord(video_id="v1", topic_id="t1", pillar="wealth_engine", topic_type="evergreen", views=4000),
+                HistoricalRecord(video_id="v2", topic_id="t2", pillar="wealth_engine", topic_type="evergreen", views=2000),
             ]
         )
         scored = TopicScorer(default_config).score(candidate, history)
@@ -112,7 +112,7 @@ class TestScoreCalculation:
     def test_no_matching_record_keeps_fit_null(self, default_config, candidate_factory):
         candidate = candidate_factory(topic_id="nobody")
         history = SelectionHistory.from_records(
-            [HistoricalRecord(video_id="v1", topic_id="t1", pillar="technology", topic_type="technology_development", views=4000)]
+            [HistoricalRecord(video_id="v1", topic_id="t1", pillar="financial_autopsies", topic_type="case_study", views=4000)]
         )
         scored = TopicScorer(default_config).score(candidate, history)
         assert scored.historical_fit is None
@@ -120,7 +120,7 @@ class TestScoreCalculation:
 
     def test_historical_disabled_ignores_history(self, default_config, candidate, config_factory):
         history = SelectionHistory.from_records(
-            [HistoricalRecord(video_id="v1", topic_id="t1", pillar="science", topic_type="surprising_fact", views=4000)]
+            [HistoricalRecord(video_id="v1", topic_id="t1", pillar="wealth_engine", topic_type="evergreen", views=4000)]
         )
         config = config_factory(historical_enabled=False, historical_weight=0.25)
         scored = TopicScorer(config).score(candidate, history)

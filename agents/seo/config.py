@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from config.channel import CHANNEL, ChannelConfig
+
 try:
     import yaml  # type: ignore
 except ImportError:  # pragma: no cover - exercised only without deps
@@ -66,12 +68,32 @@ class SelectionConfig:
 
 
 @dataclass(frozen=True)
+class PillarInfo:
+    """Editorial definition of a single content pillar."""
+
+    pillar_id: str
+    label: str
+    focus: str
+    guidance: str
+
+    def to_dict(self) -> dict:
+        return {
+            "pillar_id": self.pillar_id,
+            "label": self.label,
+            "focus": self.focus,
+            "guidance": self.guidance,
+        }
+
+
+@dataclass(frozen=True)
 class TopicSelectionConfig:
     version: int
     scoring: ScoringConfig
     selection: SelectionConfig
     pillars: tuple[str, ...]
     topic_types: tuple[str, ...]
+    pillar_catalog: tuple[PillarInfo, ...] = ()
+    channel: ChannelConfig = CHANNEL
 
     def to_dict(self) -> dict:
         return {
@@ -80,7 +102,20 @@ class TopicSelectionConfig:
             "selection": self.selection.to_dict(),
             "pillars": list(self.pillars),
             "topic_types": list(self.topic_types),
+            "pillar_catalog": [pillar.to_dict() for pillar in self.pillar_catalog],
+            "channel": self.channel.to_dict(),
         }
+
+    def pillar_info(self, pillar_id: str) -> PillarInfo:
+        """Return the editorial definition for ``pillar_id``.
+
+        Raises if the pillar is unknown so a candidate can never be emitted
+        for a pillar that has no defined editorial meaning.
+        """
+        for pillar in self.pillar_catalog:
+            if pillar.pillar_id == pillar_id:
+                return pillar
+        raise TopicSelectionConfigError(f"pillar not in catalog: {pillar_id}")
 
 
 def _require_mapping(node: object, key: str) -> dict:
@@ -144,6 +179,35 @@ def load_config(path: str | Path = DEFAULT_CONFIG_PATH) -> TopicSelectionConfig:
     if not topic_types:
         raise TopicSelectionConfigError("config lists no topic_types")
 
+    catalog_node = _require_mapping(raw, "pillar_catalog")
+    pillar_catalog: list[PillarInfo] = []
+    for pillar_id in pillars:
+        entry = catalog_node.get(pillar_id)
+        if not isinstance(entry, dict):
+            raise TopicSelectionConfigError(f"pillar_catalog missing entry for pillar: {pillar_id}")
+        label = entry.get("label")
+        focus = entry.get("focus")
+        guidance = entry.get("guidance")
+        if not isinstance(label, str) or not label.strip():
+            raise TopicSelectionConfigError(f"pillar_catalog.{pillar_id}.label must be a non-empty string")
+        if not isinstance(focus, str) or not focus.strip():
+            raise TopicSelectionConfigError(f"pillar_catalog.{pillar_id}.focus must be a non-empty string")
+        if not isinstance(guidance, str) or not guidance.strip():
+            raise TopicSelectionConfigError(f"pillar_catalog.{pillar_id}.guidance must be a non-empty string")
+        pillar_catalog.append(
+            PillarInfo(
+                pillar_id=pillar_id,
+                label=label.strip(),
+                focus=focus.strip(),
+                guidance=" ".join(guidance.split()),
+            )
+        )
+    extra_catalog = sorted(set(catalog_node) - set(pillars))
+    if extra_catalog:
+        raise TopicSelectionConfigError(
+            "pillar_catalog defines pillars that are not listed under 'pillars': " + ", ".join(extra_catalog)
+        )
+
     return TopicSelectionConfig(
         version=int(raw.get("version", 1)),
         scoring=ScoringConfig(
@@ -160,4 +224,5 @@ def load_config(path: str | Path = DEFAULT_CONFIG_PATH) -> TopicSelectionConfig:
         ),
         pillars=pillars,
         topic_types=topic_types,
+        pillar_catalog=tuple(pillar_catalog),
     )

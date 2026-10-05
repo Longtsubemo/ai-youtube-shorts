@@ -38,7 +38,7 @@ class TestProvenance:
         selected = selection.to_dict()["data"]["selected_topic"]
         provenance = selected.get("provenance")
         assert provenance is not None
-        assert provenance["generated_by"] == "mock_catalog_v1"
+        assert provenance["generated_by"] == "mock_catalog_v2"
         assert provenance["source"] == "internal_mock"
         assert provenance["created_at"]
 

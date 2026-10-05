@@ -20,9 +20,9 @@ from agents.seo.models import Provenance, TopicCandidate, utc_now
 from providers.gemini.client import GeminiClient
 from providers.gemini.errors import GeminiSchemaValidationError
 
-PROMPT_VERSION = "seo/topic_candidates-v1"
-DEFAULT_PROMPT_PATH = Path("prompts") / "seo" / "topic_candidates-v1.txt"
-GENERATED_BY = "gemini_topic_provider_v1"
+PROMPT_VERSION = "seo/topic_candidates-v2"
+DEFAULT_PROMPT_PATH = Path("prompts") / "seo" / "topic_candidates-v2.txt"
+GENERATED_BY = "gemini_topic_provider_v2"
 DEFAULT_CANDIDATE_COUNT = 8
 
 _SLUG_CLEANUP = re.compile(r"[^a-z0-9]+")
@@ -50,6 +50,8 @@ class TopicCandidateSchema(BaseModel):
     description: str = Field(min_length=1)
     pillar: str = Field(min_length=1)
     topic_type: str = Field(min_length=1)
+    angle: str = Field(min_length=1)
+    hook_direction: str = Field(min_length=1)
     signals: _SignalScores
     content_scores: _ContentScores
 
@@ -119,22 +121,47 @@ class GeminiTopicProvider:
     # -- internals --------------------------------------------------------- #
 
     def _system_prompt(self) -> str:
+        channel = self._config.channel
         return (
-            "You are a stage-1 topic candidate generator. You only propose ideas. "
-            "You must not claim research was performed, must not invent evidence, "
-            "and must not fabricate URLs or sources. Return JSON only."
+            "You are a stage-1 topic candidate generator for the "
+            f"'{channel.channel_id}' YouTube Shorts channel. "
+            f"The channel promise is: {channel.channel_promise} "
+            f"Tone: {channel.tone}. "
+            "You only propose ideas; you never assert verified facts and never "
+            "cite sources. Frame every candidate as an investigative money "
+            "story the host's fox financial detective can present on screen. "
+            "Return JSON only."
         )
 
     def _render_prompt(self) -> str:
         path = Path(self._prompt_path)
         if not path.is_file():
             raise FileNotFoundError(f"prompt template not found: {path}")
-        return (
-            path.read_text(encoding="utf-8")
-            .replace("{candidate_count}", str(self._candidate_count))
-            .replace("{pillars}", ", ".join(self._config.pillars))
-            .replace("{topic_types}", ", ".join(self._config.topic_types))
+        channel = self._config.channel
+        pillar_lines = "\n".join(
+            f"- {p.pillar_id}: {p.label} — {p.focus} Framing: {p.guidance}"
+            for p in self._config.pillar_catalog
         )
+        replacements = {
+            "{candidate_count}": str(self._candidate_count),
+            "{pillars}": ", ".join(self._config.pillars),
+            "{topic_types}": ", ".join(self._config.topic_types),
+            "{pillar_catalog}": pillar_lines,
+            "{channel_id}": channel.channel_id,
+            "{channel_promise}": channel.channel_promise,
+            "{audience}": channel.audience,
+            "{tone}": channel.tone,
+            "{language}": channel.language,
+            "{format}": channel.format,
+            "{target_duration_seconds}": str(channel.target_duration_seconds),
+            "{mascot_name}": channel.mascot.name,
+            "{mascot_role}": channel.mascot.role,
+            "{mascot_note}": channel.mascot.note,
+        }
+        rendered = path.read_text(encoding="utf-8")
+        for token, value in replacements.items():
+            rendered = rendered.replace(token, value)
+        return rendered
 
     def _to_candidate(self, item: TopicCandidateSchema) -> TopicCandidate:
         candidate = TopicCandidate.from_dict(
@@ -144,6 +171,8 @@ class GeminiTopicProvider:
                 "description": item.description,
                 "pillar": item.pillar,
                 "topic_type": item.topic_type,
+                "angle": item.angle,
+                "hook_direction": item.hook_direction,
                 "signals": item.signals.model_dump(),
                 "content_scores": item.content_scores.model_dump(),
             },

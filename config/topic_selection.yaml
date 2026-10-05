@@ -1,7 +1,12 @@
 # Topic selection configuration - Stage 1.
 #
 # The scorer/selector read this file; values are NOT hard-coded in Python.
-version: 1
+#
+# Channel scope: this file is finance-only. The content pillars below are the
+# six editorial pillars of the finance_mascot channel. Obsolete general-interest
+# pillars (ai, technology, science, space, curiosity) are intentionally absent
+# and must not be reintroduced as defaults or fallbacks.
+version: 2
 
 scoring:
   # Fixed/semantic interpretation = OBJECTIVE/EXTERNAL signals vs
@@ -9,6 +14,18 @@ scoring:
   # (see agents/seo/models.py). These weights mix the two intentionally:
   #   external: interest, trend_momentum, competition
   #   content:  curiosity, explainer_potential, visual_potential, audience_fit
+  #
+  # Editorial mapping for the finance_mascot channel:
+  #   curiosity             -> curiosity gap / "why does this happen?"
+  #   explainer_potential   -> usefulness / teachable in under 70 seconds
+  #   visual_potential      -> how well a fox detective can stage it on screen
+  #   audience_fit          -> channel fit for a broad money-and-wealth audience
+  #   interest              -> will a broad non-expert audience care?
+  #   competition           -> opportunity (inverse); low saturation = better
+  #
+  # NOTE: source availability, evidence availability, corroboration, and
+  # researchability are deliberately NOT scored here. Stage 1 is not a
+  # retrieval or fact-checking stage.
   weights:
     interest: 0.20
     trend_momentum: 0.15
@@ -45,19 +62,64 @@ selection:
   # Per-already-covered-pillar penalty applied during exploration.
   coverage_penalty: 0.25
 
+# Machine-readable pillar identifiers. Validated against every candidate.
 pillars:
-  - ai
-  - technology
-  - science
-  - space
-  - curiosity
+  - wealth_engine
+  - silent_wealth_killers
+  - psychology_of_capital
+  - tactical_blueprints
+  - income_expansion
+  - financial_autopsies
 
+# Human-readable editorial definition for each pillar.
+# `label` is the on-screen pillar name, `focus` is what the pillar covers, and
+# `guidance` is the detective-style framing hint handed to candidate
+# generation. Stage 1 selection uses these only as generation context and for
+# artifact output; scoring itself stays pillar-agnostic.
+pillar_catalog:
+  wealth_engine:
+    label: "Wealth Engine (How Money Grows)"
+    focus: "The mechanisms that compound money: interest, index funds, cashflow, and ownership."
+    guidance: >
+      Open on the engine itself. Show the machine that produces the money and
+      then let the viewer see it running.
+  silent_wealth_killers:
+    label: "Silent Wealth Killers (Why Money Doesn't Grow)"
+    focus: "Quiet, recurring leaks that drain wealth while the balance still looks fine."
+    guidance: >
+      Frame it as a crime scene the owner never noticed. Name the leak, show
+      the evidence, quantify what it cost.
+  psychology_of_capital:
+    label: "Psychology of Capital (Mindset & Behavior)"
+    focus: "Money beliefs and behaviors: loss aversion, status spending, sunk cost, and compounding inertia."
+    guidance: >
+      Read the suspect's behavior, not the numbers. Explain the mindset that
+      produced the outcome.
+  tactical_blueprints:
+    label: "Tactical Blueprints (What You Can Do)"
+    focus: "Specific, doable actions the viewer can apply to their own money this week."
+    guidance: >
+      Hand the viewer the blueprint. One concrete action, clearly stated.
+  income_expansion:
+    label: "Income Expansion & Asymmetric Upside (Building Capital)"
+    focus: "Ways to grow earning power and capture upside where downside is limited."
+    guidance: >
+      Show the asymmetry. Small, bounded downside against large, uncertain
+      upside.
+  financial_autopsies:
+    label: "Financial Autopsies & Real-World Breakdown (Case Studies)"
+    focus: "Real-world cases, companies, and households dissected to show what actually happened."
+    guidance: >
+      Open the case file. Walk through what happened and why the outcome was
+      not what it looked like.
+
+# Every candidate must declare one of these. Finance-specific framings only.
 topic_types:
   - evergreen
-  - trending
-  - recent_discovery
-  - historical
-  - surprising_fact
-  - technology_development
-  - scientific_concept
-  - unusual_phenomenon
+  - money_myth
+  - wealth_leak
+  - money_behavior
+  - actionable_blueprint
+  - asymmetric_upside
+  - case_study
+  - money_concept

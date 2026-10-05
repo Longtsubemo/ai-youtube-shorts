@@ -17,8 +17,16 @@ SELECTION_DATA = MOCK_DATA / "topic_selection.json"
 
 
 def _default_config_dict() -> dict:
+    pillars = [
+        "wealth_engine",
+        "silent_wealth_killers",
+        "psychology_of_capital",
+        "tactical_blueprints",
+        "income_expansion",
+        "financial_autopsies",
+    ]
     return {
-        "version": 1,
+        "version": 2,
         "scoring": {
             "weights": {
                 "interest": 0.20,
@@ -38,16 +46,24 @@ def _default_config_dict() -> dict:
             "top_n": 3,
             "coverage_penalty": 0.25,
         },
-        "pillars": ["ai", "technology", "science", "space", "curiosity"],
+        "pillars": pillars,
+        "pillar_catalog": {
+            pillar: {
+                "label": f"{pillar} label",
+                "focus": f"{pillar} focus",
+                "guidance": f"{pillar} guidance",
+            }
+            for pillar in pillars
+        },
         "topic_types": [
             "evergreen",
-            "trending",
-            "recent_discovery",
-            "historical",
-            "surprising_fact",
-            "technology_development",
-            "scientific_concept",
-            "unusual_phenomenon",
+            "money_myth",
+            "wealth_leak",
+            "money_behavior",
+            "actionable_blueprint",
+            "asymmetric_upside",
+            "case_study",
+            "money_concept",
         ],
     }
 
@@ -97,10 +113,12 @@ def config_factory(tmp_path):
 def _make_candidate(
     topic_id="t1",
     title="Sample topic",
-    pillar="science",
-    topic_type="surprising_fact",
+    pillar="wealth_engine",
+    topic_type="evergreen",
     signals=None,
     content=None,
+    angle="Sample angle describing the framing.",
+    hook_direction="Sample hook direction.",
 ) -> TopicCandidate:
     signals = signals or {"interest": 0.7, "trend_momentum": 0.4, "competition": 0.5, "freshness": 0.3}
     content = content or {"curiosity": 0.8, "explainer_potential": 0.8, "visual_potential": 0.7, "audience_fit": 0.8}
@@ -110,6 +128,8 @@ def _make_candidate(
         description="Test description for a locally mocked candidate.",
         pillar=pillar,
         topic_type=topic_type,
+        angle=angle,
+        hook_direction=hook_direction,
         signals=SignalScores(**signals),
         content_scores=ContentScores(**content),
         provenance=Provenance(
@@ -143,9 +163,9 @@ def sample_history():
         [
             HistoricalRecord(
                 video_id="vid_mock_0001",
-                topic_id="t_octopus_hearts",
-                pillar="science",
-                topic_type="surprising_fact",
+                topic_id="t_compounding_tuition",
+                pillar="wealth_engine",
+                topic_type="evergreen",
                 views=5200,
                 retention=0.58,
                 likes=340,
@@ -156,9 +176,9 @@ def sample_history():
             ),
             HistoricalRecord(
                 video_id="vid_mock_0002",
-                topic_id="t_black_hole",
-                pillar="space",
-                topic_type="scientific_concept",
+                topic_id="t_startup_pay_cut",
+                pillar="financial_autopsies",
+                topic_type="case_study",
                 views=3100,
                 retention=0.51,
                 likes=210,

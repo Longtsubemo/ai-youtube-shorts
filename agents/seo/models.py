@@ -142,8 +142,10 @@ class TopicCandidate:
     description: str
     pillar: str
     topic_type: str
-    signals: SignalScores
-    content_scores: ContentScores
+    angle: str = ""
+    hook_direction: str = ""
+    signals: SignalScores | None = None
+    content_scores: ContentScores | None = None
     historical_fit: float | None = None
     total_score: float | None = None
     provenance: Provenance | None = None
@@ -154,6 +156,12 @@ class TopicCandidate:
         _require(self.description, "description")
         _require(self.pillar, "pillar")
         _require(self.topic_type, "topic_type")
+        _require(self.angle, "angle")
+        _require(self.hook_direction, "hook_direction")
+        if self.signals is None:
+            raise TopicCandidateError("missing required field: signals")
+        if self.content_scores is None:
+            raise TopicCandidateError("missing required field: content_scores")
         if self.pillar not in pillars:
             allowed = ", ".join(pillars)
             raise TopicCandidateError(f"unknown pillar '{self.pillar}' (allowed: {allowed})")
@@ -173,6 +181,8 @@ class TopicCandidate:
             "description": self.description,
             "pillar": self.pillar,
             "topic_type": self.topic_type,
+            "angle": self.angle,
+            "hook_direction": self.hook_direction,
             "signals": self.signals.to_dict(),
             "content_scores": self.content_scores.to_dict(),
             "historical_fit": self.historical_fit,
@@ -188,6 +198,8 @@ class TopicCandidate:
             description=_require(data.get("description"), "description"),
             pillar=_require(data.get("pillar"), "pillar"),
             topic_type=_require(data.get("topic_type"), "topic_type"),
+            angle=_require(data.get("angle"), "angle"),
+            hook_direction=_require(data.get("hook_direction"), "hook_direction"),
             signals=SignalScores.from_dict(data.get("signals") or {}),
             content_scores=ContentScores.from_dict(data.get("content_scores") or {}),
             historical_fit=data.get("historical_fit"),

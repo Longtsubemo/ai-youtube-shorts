@@ -1,7 +1,7 @@
 {
   "schema": "TopicSelection",
   "schema_version": 1,
-  "created_at": "2026-09-20T09:31:28.119388+00:00",
+  "created_at": "2026-10-05T09:31:28.119388+00:00",
   "run_id": "mock",
   "stage": "topic_selection",
   "produced_by": {
@@ -10,32 +10,34 @@
     "model": null
   },
   "data": {
-    "selection_id": "ts_a4ad44ea7fa9",
-    "selected_topic_id": "t_octopus_hearts",
+    "selection_id": "ts_a4057588f52a",
+    "selected_topic_id": "t_startup_pay_cut",
     "selected_topic": {
-      "topic_id": "t_octopus_hearts",
-      "title": "Why octopuses have three hearts",
-      "description": "Explainer: two branchial hearts push blood through the gills, one systemic heart powers the body; two hearts shut down while swimming. Internal mock candidate.",
-      "pillar": "science",
-      "topic_type": "surprising_fact",
+      "topic_id": "t_startup_pay_cut",
+      "title": "Autopsy: the startup salary that disappeared in a funding winter",
+      "description": "Case study: equity that was promised on paper and what actually happened when growth stalled.",
+      "pillar": "financial_autopsies",
+      "topic_type": "case_study",
+      "angle": "Dissect an equity grant from promise to outcome, showing where the value went.",
+      "hook_direction": "Lead with the offer letter figure and end on what it was actually worth.",
       "signals": {
-        "interest": 0.75,
-        "trend_momentum": 0.35,
-        "competition": 0.3,
-        "freshness": 0.1
+        "interest": 0.83,
+        "trend_momentum": 0.5,
+        "competition": 0.4,
+        "freshness": 0.25
       },
       "content_scores": {
-        "curiosity": 0.9,
-        "explainer_potential": 0.75,
-        "visual_potential": 0.8,
-        "audience_fit": 0.8
+        "curiosity": 0.88,
+        "explainer_potential": 0.78,
+        "visual_potential": 0.64,
+        "audience_fit": 0.82
       },
       "historical_fit": null,
-      "total_score": 0.7150000000000001,
+      "total_score": 0.726,
       "provenance": {
-        "generated_by": "mock_catalog_v1",
+        "generated_by": "mock_catalog_v2",
         "source": "internal_mock",
-        "created_at": "2026-09-20T00:00:00+00:00",
+        "created_at": "2026-10-05T00:00:00+00:00",
         "provider": null,
         "model": null,
         "prompt_version": null
@@ -43,232 +45,372 @@
     },
     "ranked_candidates": [
       {
-        "topic_id": "t_black_hole",
-        "title": "Why can't we see inside a black hole?",
-        "description": "Explainer: the event horizon is the last surface where light can still escape; anything beyond it cannot send signals back out. Internal mock candidate.",
-        "pillar": "space",
-        "topic_type": "scientific_concept",
+        "topic_id": "t_household_autopsy",
+        "title": "Autopsy: the family that spent six figures and saved nothing",
+        "description": "Case study: a household budget post-mortem showing where the money went and which habits were responsible.",
+        "pillar": "financial_autopsies",
+        "topic_type": "case_study",
+        "angle": "Autopsy a real budget and expose the two decisions that consumed the entire year of savings.",
+        "hook_direction": "Open with the fact that they earned well and still have nothing, then ask how.",
         "signals": {
-          "interest": 0.8,
-          "trend_momentum": 0.25,
-          "competition": 0.4,
-          "freshness": 0.1
+          "interest": 0.9,
+          "trend_momentum": 0.38,
+          "competition": 0.3,
+          "freshness": 0.15
         },
         "content_scores": {
           "curiosity": 0.95,
-          "explainer_potential": 0.85,
-          "visual_potential": 0.9,
-          "audience_fit": 0.9
+          "explainer_potential": 0.82,
+          "visual_potential": 0.76,
+          "audience_fit": 0.94
         },
         "historical_fit": null,
-        "total_score": 0.7375,
+        "total_score": 0.7775,
         "provenance": {
-          "generated_by": "mock_catalog_v1",
+          "generated_by": "mock_catalog_v2",
           "source": "internal_mock",
-          "created_at": "2026-09-20T00:00:00+00:00",
+          "created_at": "2026-10-05T00:00:00+00:00",
           "provider": null,
           "model": null,
           "prompt_version": null
         }
       },
       {
-        "topic_id": "t_earth_stops_spinning",
-        "title": "What would happen if Earth suddenly stopped spinning?",
-        "description": "Explainer thought experiment: momentum, day length, wind and oceans. Internal mock candidate.",
-        "pillar": "curiosity",
-        "topic_type": "unusual_phenomenon",
+        "topic_id": "t_cash_drain",
+        "title": "The expense that quietly eats 40% of an average salary",
+        "description": "Silent wealth killer: one recurring household line that leaves almost nothing behind, costed out in yearly and lifetime terms.",
+        "pillar": "silent_wealth_killers",
+        "topic_type": "wealth_leak",
+        "angle": "Treat a single recurring expense as an unseen leak draining the paycheck in real time.",
+        "hook_direction": "Open by revealing the lifetime total of a cost the owner pays without ever multiplying it out.",
+        "signals": {
+          "interest": 0.88,
+          "trend_momentum": 0.4,
+          "competition": 0.45,
+          "freshness": 0.15
+        },
+        "content_scores": {
+          "curiosity": 0.92,
+          "explainer_potential": 0.86,
+          "visual_potential": 0.78,
+          "audience_fit": 0.94
+        },
+        "historical_fit": null,
+        "total_score": 0.7575000000000001,
+        "provenance": {
+          "generated_by": "mock_catalog_v2",
+          "source": "internal_mock",
+          "created_at": "2026-10-05T00:00:00+00:00",
+          "provider": null,
+          "model": null,
+          "prompt_version": null
+        }
+      },
+      {
+        "topic_id": "t_startup_pay_cut",
+        "title": "Autopsy: the startup salary that disappeared in a funding winter",
+        "description": "Case study: equity that was promised on paper and what actually happened when growth stalled.",
+        "pillar": "financial_autopsies",
+        "topic_type": "case_study",
+        "angle": "Dissect an equity grant from promise to outcome, showing where the value went.",
+        "hook_direction": "Lead with the offer letter figure and end on what it was actually worth.",
+        "signals": {
+          "interest": 0.83,
+          "trend_momentum": 0.5,
+          "competition": 0.4,
+          "freshness": 0.25
+        },
+        "content_scores": {
+          "curiosity": 0.88,
+          "explainer_potential": 0.78,
+          "visual_potential": 0.64,
+          "audience_fit": 0.82
+        },
+        "historical_fit": null,
+        "total_score": 0.726,
+        "provenance": {
+          "generated_by": "mock_catalog_v2",
+          "source": "internal_mock",
+          "created_at": "2026-10-05T00:00:00+00:00",
+          "provider": null,
+          "model": null,
+          "prompt_version": null
+        }
+      },
+      {
+        "topic_id": "t_second_income_ladder",
+        "title": "The skill ladder behind a second income",
+        "description": "Asymmetric upside: how one narrow, learnable skill can be sold repeatedly while a salary stays intact.",
+        "pillar": "income_expansion",
+        "topic_type": "asymmetric_upside",
+        "angle": "Show the bounded downside of a side skill against the open-ended upside of sellable work.",
+        "hook_direction": "Contrast the worst case of trying it with the best case, then let the asymmetry speak.",
         "signals": {
           "interest": 0.85,
-          "trend_momentum": 0.2,
+          "trend_momentum": 0.45,
+          "competition": 0.48,
+          "freshness": 0.2
+        },
+        "content_scores": {
+          "curiosity": 0.76,
+          "explainer_potential": 0.84,
+          "visual_potential": 0.68,
+          "audience_fit": 0.91
+        },
+        "historical_fit": null,
+        "total_score": 0.7145,
+        "provenance": {
+          "generated_by": "mock_catalog_v2",
+          "source": "internal_mock",
+          "created_at": "2026-10-05T00:00:00+00:00",
+          "provider": null,
+          "model": null,
+          "prompt_version": null
+        }
+      },
+      {
+        "topic_id": "t_compounding_tuition",
+        "title": "Why starting to invest at 22 beats starting at 32",
+        "description": "Case study: the same monthly contribution made ten years apart, and the gap that only shows up at retirement.",
+        "pillar": "wealth_engine",
+        "topic_type": "evergreen",
+        "angle": "Two identical contributions, two radically different outcomes, with the arithmetic made visible.",
+        "hook_direction": "Start with the number that ends the story: how much more the early starter ends up with.",
+        "signals": {
+          "interest": 0.82,
+          "trend_momentum": 0.35,
+          "competition": 0.55,
+          "freshness": 0.1
+        },
+        "content_scores": {
+          "curiosity": 0.78,
+          "explainer_potential": 0.9,
+          "visual_potential": 0.72,
+          "audience_fit": 0.92
+        },
+        "historical_fit": null,
+        "total_score": 0.7,
+        "provenance": {
+          "generated_by": "mock_catalog_v2",
+          "source": "internal_mock",
+          "created_at": "2026-10-05T00:00:00+00:00",
+          "provider": null,
+          "model": null,
+          "prompt_version": null
+        }
+      },
+      {
+        "topic_id": "t_payday_reset",
+        "title": "The 24 hours that reset your entire budget",
+        "description": "Actionable blueprint: a two-part system that makes the first days of the month matter instead of ruining the month.",
+        "pillar": "tactical_blueprints",
+        "topic_type": "actionable_blueprint",
+        "angle": "Hand the viewer one concrete payday system to install immediately.",
+        "hook_direction": "Present the blueprint up front as a single change to try this week.",
+        "signals": {
+          "interest": 0.76,
+          "trend_momentum": 0.18,
           "competition": 0.35,
           "freshness": 0.1
         },
         "content_scores": {
-          "curiosity": 0.95,
-          "explainer_potential": 0.8,
-          "visual_potential": 0.85,
-          "audience_fit": 0.85
+          "curiosity": 0.66,
+          "explainer_potential": 0.95,
+          "visual_potential": 0.74,
+          "audience_fit": 0.93
         },
         "historical_fit": null,
-        "total_score": 0.73,
+        "total_score": 0.685,
         "provenance": {
-          "generated_by": "mock_catalog_v1",
+          "generated_by": "mock_catalog_v2",
           "source": "internal_mock",
-          "created_at": "2026-09-20T00:00:00+00:00",
+          "created_at": "2026-10-05T00:00:00+00:00",
           "provider": null,
           "model": null,
           "prompt_version": null
         }
       },
       {
-        "topic_id": "t_octopus_hearts",
-        "title": "Why octopuses have three hearts",
-        "description": "Explainer: two branchial hearts push blood through the gills, one systemic heart powers the body; two hearts shut down while swimming. Internal mock candidate.",
-        "pillar": "science",
-        "topic_type": "surprising_fact",
+        "topic_id": "t_paycheck_split",
+        "title": "Split your paycheck the day you get paid",
+        "description": "Actionable blueprint: a fixed allocation between spending, saving, and investing, done automatically on payday.",
+        "pillar": "tactical_blueprints",
+        "topic_type": "actionable_blueprint",
+        "angle": "Offer a single repeatable money move the viewer can automate before the month starts.",
+        "hook_direction": "Open with the instruction itself: what to do in the first ten minutes after payday.",
         "signals": {
-          "interest": 0.75,
-          "trend_momentum": 0.35,
-          "competition": 0.3,
+          "interest": 0.84,
+          "trend_momentum": 0.22,
+          "competition": 0.42,
           "freshness": 0.1
         },
         "content_scores": {
-          "curiosity": 0.9,
-          "explainer_potential": 0.75,
-          "visual_potential": 0.8,
-          "audience_fit": 0.8
+          "curiosity": 0.58,
+          "explainer_potential": 0.96,
+          "visual_potential": 0.7,
+          "audience_fit": 0.95
         },
         "historical_fit": null,
-        "total_score": 0.7150000000000001,
+        "total_score": 0.6839999999999999,
         "provenance": {
-          "generated_by": "mock_catalog_v1",
+          "generated_by": "mock_catalog_v2",
           "source": "internal_mock",
-          "created_at": "2026-09-20T00:00:00+00:00",
+          "created_at": "2026-10-05T00:00:00+00:00",
           "provider": null,
           "model": null,
           "prompt_version": null
         }
       },
       {
-        "topic_id": "t_ai_agents_computers",
-        "title": "How AI agents actually use computers",
-        "description": "Explainer: AI agents observe a screen, decide an action, and execute it step by step. Internal mock candidate, not researched.",
-        "pillar": "ai",
-        "topic_type": "evergreen",
+        "topic_id": "t_loss_aversion_saver",
+        "title": "Why winners sell too early and losers hold too long",
+        "description": "Money behavior: loss aversion turning ordinary investors into bad decision-makers with their own money.",
+        "pillar": "psychology_of_capital",
+        "topic_type": "money_behavior",
+        "angle": "Read the investor's own behavior as the culprit, with a familiar self-inflicted mistake as the evidence.",
+        "hook_direction": "Ask the audience to guess what their own last trade or sale would have looked like.",
         "signals": {
           "interest": 0.8,
-          "trend_momentum": 0.6,
+          "trend_momentum": 0.2,
+          "competition": 0.5,
+          "freshness": 0.1
+        },
+        "content_scores": {
+          "curiosity": 0.85,
+          "explainer_potential": 0.8,
+          "visual_potential": 0.62,
+          "audience_fit": 0.86
+        },
+        "historical_fit": null,
+        "total_score": 0.6605000000000001,
+        "provenance": {
+          "generated_by": "mock_catalog_v2",
+          "source": "internal_mock",
+          "created_at": "2026-10-05T00:00:00+00:00",
+          "provider": null,
+          "model": null,
+          "prompt_version": null
+        }
+      },
+      {
+        "topic_id": "t_myth_401k_match",
+        "title": "Myth: your employer match is free money you can keep",
+        "description": "Money myth: what an employer match really is, and the vesting rule that decides when it is yours.",
+        "pillar": "silent_wealth_killers",
+        "topic_type": "money_myth",
+        "angle": "Correct the 'free money' belief by introducing the vesting condition hidden in plain sight.",
+        "hook_direction": "Start from the widely repeated claim, then reveal the clause that undercuts it.",
+        "signals": {
+          "interest": 0.79,
+          "trend_momentum": 0.25,
+          "competition": 0.58,
+          "freshness": 0.1
+        },
+        "content_scores": {
+          "curiosity": 0.82,
+          "explainer_potential": 0.85,
+          "visual_potential": 0.6,
+          "audience_fit": 0.87
+        },
+        "historical_fit": null,
+        "total_score": 0.656,
+        "provenance": {
+          "generated_by": "mock_catalog_v2",
+          "source": "internal_mock",
+          "created_at": "2026-10-05T00:00:00+00:00",
+          "provider": null,
+          "model": null,
+          "prompt_version": null
+        }
+      },
+      {
+        "topic_id": "t_inflation_erosion",
+        "title": "Why your savings account is slowly shrinking",
+        "description": "Silent wealth killer: what inflation does to cash sitting still, told as a losing race between two powers.",
+        "pillar": "silent_wealth_killers",
+        "topic_type": "money_concept",
+        "angle": "Show purchasing power being eroded in the background while the account balance still looks healthy.",
+        "hook_direction": "Lead with the mental image of money melting while the account number stays reassuringly the same.",
+        "signals": {
+          "interest": 0.75,
+          "trend_momentum": 0.3,
+          "competition": 0.65,
+          "freshness": 0.1
+        },
+        "content_scores": {
+          "curiosity": 0.8,
+          "explainer_potential": 0.84,
+          "visual_potential": 0.7,
+          "audience_fit": 0.9
+        },
+        "historical_fit": null,
+        "total_score": 0.6535,
+        "provenance": {
+          "generated_by": "mock_catalog_v2",
+          "source": "internal_mock",
+          "created_at": "2026-10-05T00:00:00+00:00",
+          "provider": null,
+          "model": null,
+          "prompt_version": null
+        }
+      },
+      {
+        "topic_id": "t_index_fund_wealth",
+        "title": "What an index fund actually owns",
+        "description": "Plain-language look inside a total-market index fund and why that basket grows on its own.",
+        "pillar": "wealth_engine",
+        "topic_type": "money_concept",
+        "angle": "Reveal the invisible contents of a single investment vehicle most people already own.",
+        "hook_direction": "Ask the audience to picture what they actually own when they 'buy the market'.",
+        "signals": {
+          "interest": 0.7,
+          "trend_momentum": 0.25,
           "competition": 0.6,
           "freshness": 0.1
         },
         "content_scores": {
-          "curiosity": 0.7,
-          "explainer_potential": 0.85,
-          "visual_potential": 0.6,
-          "audience_fit": 0.85
-        },
-        "historical_fit": null,
-        "total_score": 0.6875,
-        "provenance": {
-          "generated_by": "mock_catalog_v1",
-          "source": "internal_mock",
-          "created_at": "2026-09-20T00:00:00+00:00",
-          "provider": null,
-          "model": null,
-          "prompt_version": null
-        }
-      },
-      {
-        "topic_id": "t_noise_cancellation",
-        "title": "How does noise cancellation actually work?",
-        "description": "Explainer: microphones capture ambient sound, invert the wave, and cancel it before it reaches your ear. Internal mock candidate.",
-        "pillar": "technology",
-        "topic_type": "technology_development",
-        "signals": {
-          "interest": 0.7,
-          "trend_momentum": 0.4,
-          "competition": 0.5,
-          "freshness": 0.1
-        },
-        "content_scores": {
-          "curiosity": 0.6,
-          "explainer_potential": 0.8,
+          "curiosity": 0.72,
+          "explainer_potential": 0.88,
           "visual_potential": 0.8,
-          "audience_fit": 0.8
+          "audience_fit": 0.88
         },
         "historical_fit": null,
-        "total_score": 0.645,
+        "total_score": 0.6455,
         "provenance": {
-          "generated_by": "mock_catalog_v1",
+          "generated_by": "mock_catalog_v2",
           "source": "internal_mock",
-          "created_at": "2026-09-20T00:00:00+00:00",
+          "created_at": "2026-10-05T00:00:00+00:00",
           "provider": null,
           "model": null,
           "prompt_version": null
         }
       },
       {
-        "topic_id": "t_europa_salt",
-        "title": "Salt crystals on Europa: a new look at an icy moon",
-        "description": "Mock recent-discovery framing to exercise the 'recent_discovery' topic type. NOT a real claim; no claim of trending status.",
-        "pillar": "space",
-        "topic_type": "recent_discovery",
+        "topic_id": "t_lifestyle_inflation",
+        "title": "How a raise quietly upgraded your expenses",
+        "description": "Money behavior: lifestyle inflation absorbing an income increase so net wealth never moves.",
+        "pillar": "psychology_of_capital",
+        "topic_type": "money_behavior",
+        "angle": "Trace a single raise through spending habits to show where the extra money went.",
+        "hook_direction": "Reveal the raise on a payslip and follow the money as it disappears into the month.",
         "signals": {
-          "interest": 0.55,
-          "trend_momentum": 0.45,
-          "competition": 0.4,
-          "freshness": 0.3
-        },
-        "content_scores": {
-          "curiosity": 0.65,
-          "explainer_potential": 0.6,
-          "visual_potential": 0.75,
-          "audience_fit": 0.8
-        },
-        "historical_fit": null,
-        "total_score": 0.6100000000000001,
-        "provenance": {
-          "generated_by": "mock_catalog_v1",
-          "source": "internal_mock",
-          "created_at": "2026-09-20T00:00:00+00:00",
-          "provider": null,
-          "model": null,
-          "prompt_version": null
-        }
-      },
-      {
-        "topic_id": "t_ai_hallucination",
-        "title": "Why do AI models hallucinate?",
-        "description": "Explainer: next-token prediction has no memory of truth, only likelihood. Internal mock candidate.",
-        "pillar": "ai",
-        "topic_type": "scientific_concept",
-        "signals": {
-          "interest": 0.6,
-          "trend_momentum": 0.3,
-          "competition": 0.5,
+          "interest": 0.78,
+          "trend_momentum": 0.15,
+          "competition": 0.55,
           "freshness": 0.1
         },
         "content_scores": {
-          "curiosity": 0.7,
-          "explainer_potential": 0.75,
-          "visual_potential": 0.55,
-          "audience_fit": 0.8
+          "curiosity": 0.74,
+          "explainer_potential": 0.82,
+          "visual_potential": 0.66,
+          "audience_fit": 0.9
         },
         "historical_fit": null,
-        "total_score": 0.5925,
+        "total_score": 0.636,
         "provenance": {
-          "generated_by": "mock_catalog_v1",
+          "generated_by": "mock_catalog_v2",
           "source": "internal_mock",
-          "created_at": "2026-09-20T00:00:00+00:00",
-          "provider": null,
-          "model": null,
-          "prompt_version": null
-        }
-      },
-      {
-        "topic_id": "t_first_bug",
-        "title": "The first computer bug was a literal moth",
-        "description": "Historical: a moth found in the Harvard Mark II relay, taped into the logbook in 1947. Internal mock candidate.",
-        "pillar": "technology",
-        "topic_type": "historical",
-        "signals": {
-          "interest": 0.5,
-          "trend_momentum": 0.1,
-          "competition": 0.15,
-          "freshness": 0.05
-        },
-        "content_scores": {
-          "curiosity": 0.75,
-          "explainer_potential": 0.6,
-          "visual_potential": 0.55,
-          "audience_fit": 0.7
-        },
-        "historical_fit": null,
-        "total_score": 0.57,
-        "provenance": {
-          "generated_by": "mock_catalog_v1",
-          "source": "internal_mock",
-          "created_at": "2026-09-20T00:00:00+00:00",
+          "created_at": "2026-10-05T00:00:00+00:00",
           "provider": null,
           "model": null,
           "prompt_version": null
@@ -277,9 +419,9 @@
     ],
     "selection_mode": "cold_start",
     "historical_data_available": false,
-    "selection_reason": "cold_start: no historical data; exploring to build channel signal explored top-3 candidates across pillars [curiosity, science, space] with coverage penalty 0.25 | selected 'Why octopuses have three hearts' (pillar=science, topic_type=surprising_fact, total_score=0.7150) | historical_data_available=False",
+    "selection_reason": "cold_start: no historical data; exploring to build channel signal explored top-3 candidates across pillars [financial_autopsies, silent_wealth_killers] with coverage penalty 0.25 | selected 'Autopsy: the startup salary that disappeared in a funding winter' (pillar=financial_autopsies, topic_type=case_study, total_score=0.7260) | historical_data_available=False",
     "scoring_configuration": {
-      "version": 1,
+      "version": 2,
       "scoring": {
         "weights": {
           "interest": 0.2,
@@ -301,22 +443,78 @@
         "coverage_penalty": 0.25
       },
       "pillars": [
-        "ai",
-        "technology",
-        "science",
-        "space",
-        "curiosity"
+        "wealth_engine",
+        "silent_wealth_killers",
+        "psychology_of_capital",
+        "tactical_blueprints",
+        "income_expansion",
+        "financial_autopsies"
       ],
       "topic_types": [
         "evergreen",
-        "trending",
-        "recent_discovery",
-        "historical",
-        "surprising_fact",
-        "technology_development",
-        "scientific_concept",
-        "unusual_phenomenon"
-      ]
+        "money_myth",
+        "wealth_leak",
+        "money_behavior",
+        "actionable_blueprint",
+        "asymmetric_upside",
+        "case_study",
+        "money_concept"
+      ],
+      "pillar_catalog": [
+        {
+          "pillar_id": "wealth_engine",
+          "label": "Wealth Engine (How Money Grows)",
+          "focus": "The mechanisms that compound money: interest, index funds, cashflow, and ownership.",
+          "guidance": "Open on the engine itself. Show the machine that produces the money and then let the viewer see it running."
+        },
+        {
+          "pillar_id": "silent_wealth_killers",
+          "label": "Silent Wealth Killers (Why Money Doesn't Grow)",
+          "focus": "Quiet, recurring leaks that drain wealth while the balance still looks fine.",
+          "guidance": "Frame it as a crime scene the owner never noticed. Name the leak, show the evidence, quantify what it cost."
+        },
+        {
+          "pillar_id": "psychology_of_capital",
+          "label": "Psychology of Capital (Mindset & Behavior)",
+          "focus": "Money beliefs and behaviors: loss aversion, status spending, sunk cost, and compounding inertia.",
+          "guidance": "Read the suspect's behavior, not the numbers. Explain the mindset that produced the outcome."
+        },
+        {
+          "pillar_id": "tactical_blueprints",
+          "label": "Tactical Blueprints (What You Can Do)",
+          "focus": "Specific, doable actions the viewer can apply to their own money this week.",
+          "guidance": "Hand the viewer the blueprint. One concrete action, clearly stated."
+        },
+        {
+          "pillar_id": "income_expansion",
+          "label": "Income Expansion & Asymmetric Upside (Building Capital)",
+          "focus": "Ways to grow earning power and capture upside where downside is limited.",
+          "guidance": "Show the asymmetry. Small, bounded downside against large, uncertain upside."
+        },
+        {
+          "pillar_id": "financial_autopsies",
+          "label": "Financial Autopsies & Real-World Breakdown (Case Studies)",
+          "focus": "Real-world cases, companies, and households dissected to show what actually happened.",
+          "guidance": "Open the case file. Walk through what happened and why the outcome was not what it looked like."
+        }
+      ],
+      "channel": {
+        "channel_id": "finance_mascot",
+        "language": "English",
+        "channel_promise": "Understand money. Grow wealth.",
+        "audience": "Broad English-speaking audience interested in money and wealth.",
+        "tone": "Friendly + educational",
+        "format": "YouTube Shorts",
+        "target_duration_seconds": 70,
+        "mascot": {
+          "name": "fox",
+          "role": "financial_detective",
+          "asset_path": "assets/channels/finance_mascot/mascot.png",
+          "asset_exists": false,
+          "speaks": false,
+          "note": "Appears alongside the narration as a visual presence. Never speaks and never narrates."
+        }
+      }
     }
   }
 }

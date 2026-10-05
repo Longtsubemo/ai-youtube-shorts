@@ -61,15 +61,22 @@ class FakeRawClient:
 
 
 def valid_candidates_payload(count: int = 3) -> dict:
-    """A schema-valid candidate list payload for offline provider tests."""
+    """A schema-valid candidate list payload for offline provider tests.
+
+    Mirrors a real Gemini response for the finance_mascot channel: valid
+    pillar/topic_type identifiers plus the required `angle` and
+    `hook_direction` fields.
+    """
     return {
         "candidates": [
             {
-                "topic_id": "t_ai_agents_computers",
+                "topic_id": "t_compounding_tuition",
                 "title": f"Candidate {i}",
                 "description": "A sample candidate description.",
-                "pillar": "ai",
+                "pillar": "wealth_engine",
                 "topic_type": "evergreen",
+                "angle": "Framing that shows the compounding gap.",
+                "hook_direction": "Open on the final number.",
                 "signals": {
                     "interest": 0.7,
                     "trend_momentum": 0.5,

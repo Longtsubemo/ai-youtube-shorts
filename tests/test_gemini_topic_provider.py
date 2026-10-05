@@ -80,7 +80,7 @@ def test_candidate_provenance_stamped():
     provider = _provider(load_config(DEFAULT_CONFIG), fake)
     candidate = provider.list_candidates()[0]
     assert candidate.provenance is not None
-    assert candidate.provenance.generated_by == "gemini_topic_provider_v1"
+    assert candidate.provenance.generated_by == "gemini_topic_provider_v2"
     assert candidate.provenance.provider == "gemini"
     assert candidate.provenance.model == provider.model
     assert candidate.provenance.prompt_version == PROMPT_VERSION
