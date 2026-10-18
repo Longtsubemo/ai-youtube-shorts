@@ -14,11 +14,13 @@ from pathlib import Path
 
 from agents.script.script_models import Script
 from agents.scene_planner.scene_models import (
+    CHANNEL_IMAGE_STYLE,
     MASCOT_ASSET_PATH,
     Scene,
     ScenePlan,
     ScenePlanningError,
 )
+from agents.scene_planner.validator import validate_scene_plan_generation
 from agents.seo.config import TopicSelectionConfig
 
 
@@ -66,10 +68,22 @@ def run_scene_planning(
         "target_duration_seconds": plan.target_duration_seconds or script.duration_target_seconds,
         "channel_id": plan.channel_id or (config.channel.channel_id if config else (script.channel_id or "finance_mascot")),
         "mascot_asset_path": plan.mascot_asset_path or MASCOT_ASSET_PATH,
+        "channel_image_style": plan.channel_image_style or CHANNEL_IMAGE_STYLE,
     }
     if created_at is not None:
         updates["created_at"] = created_at
     plan = replace(plan, **updates)
     if plan.total_scene_duration_seconds <= 0:
         plan = replace(plan, total_scene_duration_seconds=plan.estimated_seconds)
-    return plan.validate()
+    plan = plan.validate()
+
+    # SDXL/CLIP image-prompt gate: fail clearly on invalid generation_prompt
+    # values (empty, over the hard ceiling, forbidden concepts, narration or
+    # style leakage). Nothing is ever silently truncated.
+    validation = validate_scene_plan_generation(plan)
+    if not validation.passed:
+        details = "; ".join(
+            f"[{issue.code}] {issue.message}" for issue in validation.errors
+        )
+        raise ScenePlanningError(f"invalid generation_prompt: {details}")
+    return plan

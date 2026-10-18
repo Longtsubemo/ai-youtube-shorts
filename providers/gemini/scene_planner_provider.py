@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from agents.script.script_models import Script
 from agents.scene_planner.scene_models import (
+    CHANNEL_IMAGE_STYLE,
     MASCOT_ASSET_PATH,
     MASCOT_SPEAKS,
     Mascot,
@@ -15,12 +16,13 @@ from agents.scene_planner.scene_models import (
     ScenePlan,
     ScenePlanningError,
 )
+from agents.scene_planner.validator import validate_scene_plan_generation
 from agents.seo.config import TopicSelectionConfig
 from providers.gemini.client import GeminiClient
 from providers.gemini.errors import GeminiSchemaValidationError
 
-PROMPT_VERSION = "scene_planner/short_scene-v1"
-DEFAULT_PROMPT_PATH = Path("prompts") / "scene_planner" / "short_scene-v1.txt"
+PROMPT_VERSION = "scene_planner/short_scene-v2"
+DEFAULT_PROMPT_PATH = Path("prompts") / "scene_planner" / "short_scene-v2.txt"
 
 
 class MascotSchema(BaseModel):
@@ -121,7 +123,13 @@ class GeminiScenePlannerProvider:
                 mascot_asset_path=MASCOT_ASSET_PATH,
                 produced_by=self.produced_by,
             )
-            return plan.validate()
+            plan = plan.validate()
+            generation = validate_scene_plan_generation(plan)
+            if not generation.passed:
+                raise ScenePlanningError(
+                    "; ".join(issue.message for issue in generation.errors)
+                )
+            return plan
         except Exception as exc:  # noqa: BLE001
             raise GeminiSchemaValidationError(f"Gemini scene plan validation failed: {exc}") from exc
 
@@ -136,6 +144,17 @@ class GeminiScenePlannerProvider:
             f"Mascot role: {mascot_role}. The mascot DOES NOT SPEAK. "
             "Create visuals only; never rewrite the spoken narration. "
             "This is general financial education, never personalized investment advice. "
+            "generation_prompt values are minimal SDXL-ready image prompts: "
+            "ONE clearly recognizable primary subject, at most one genuinely "
+            "necessary supporting object, and a simple centered or deliberately "
+            "positioned composition with generous empty space. About 8-15 words; "
+            "never above 70 estimated CLIP tokens (overlong prompts are rejected, "
+            "not truncated). A simple background or texture is often better than "
+            "illustrating every noun. Never fill space with extra props, "
+            "decorative clutter, object collections or elaborate desk "
+            "arrangements. Never put narration, the mascot, people, readable text, "
+            "photorealism, 3D render, animation, video, camera moves or the "
+            "channel style block into a generation_prompt. "
             "Return JSON only."
         )
 
@@ -153,6 +172,7 @@ class GeminiScenePlannerProvider:
         rendered = path.read_text(encoding="utf-8")
         replacements = {
             "{channel_id}": self._channel_id(),
+            "{channel_image_style}": CHANNEL_IMAGE_STYLE,
             "{topic_id}": script.topic_id,
             "{title}": script.title,
             "{pillar}": script.pillar,

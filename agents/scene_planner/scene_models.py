@@ -11,8 +11,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from config.channel import CHANNEL
+
 MASCOT_ASSET_PATH = "assets/channels/finance_mascot/mascot.png"
 MASCOT_SPEAKS = False
+
+# Channel-level image style, kept OUT of the per-scene generation_prompt.
+# The image-generation worker later composes: CHANNEL_IMAGE_STYLE + ", " + prompt.
+CHANNEL_IMAGE_STYLE = CHANNEL.image_style
 
 
 def utc_now() -> str:
@@ -134,6 +140,7 @@ class ScenePlan:
     scenes: list[Scene] = field(default_factory=list)
     channel_id: str = "finance_mascot"
     mascot_asset_path: str = MASCOT_ASSET_PATH
+    channel_image_style: str = CHANNEL_IMAGE_STYLE
     run_id: str = ""
     created_at: str = field(default_factory=utc_now)
     produced_by: dict = field(
@@ -165,6 +172,7 @@ class ScenePlan:
             "scenes": [s.to_dict() for s in self.scenes],
             "channel_id": self.channel_id,
             "mascot_asset_path": self.mascot_asset_path,
+            "channel_image_style": self.channel_image_style,
             "run_id": self.run_id,
             "created_at": self.created_at,
             "produced_by": dict(self.produced_by),
@@ -198,6 +206,9 @@ class ScenePlan:
             scenes=scenes,
             channel_id=str(data.get("channel_id", "finance_mascot")),
             mascot_asset_path=str(data.get("mascot_asset_path", MASCOT_ASSET_PATH)),
+            channel_image_style=str(
+                data.get("channel_image_style") or CHANNEL_IMAGE_STYLE
+            ),
             run_id=str(data.get("run_id", "")),
             created_at=str(data.get("created_at") or utc_now()),
             produced_by=dict(data.get("produced_by") or {"prompt_version": None, "provider": None, "model": None}),

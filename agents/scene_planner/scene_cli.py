@@ -28,6 +28,7 @@ from agents.scene_planner.stage import (
     run_scene_planning,
     write_scene_plan,
 )
+from agents.scene_planner.validator import validate_scene_plan_generation
 from agents.seo.config import DEFAULT_CONFIG_PATH, load_config
 from pipeline.state import PipelineState, Stage
 
@@ -89,6 +90,8 @@ def main() -> int:
         return 2
 
     out_path = args.out or (run_dir / "scene_plan.json")
+    for issue in validate_scene_plan_generation(plan).warnings:
+        print(f"[scene_planner] warning [{issue.code}] {issue.message}")
     write_scene_plan(plan, out_path)
 
     state = PipelineState(run_id=run_id)

@@ -28,6 +28,29 @@ class ScenePlannerProvider(Protocol):
     def generate(self, context: dict) -> ScenePlan: ...
 
 
+# Deterministic, scene-specific visual subjects for the mock planner. Each
+# yields a compact SDXL-compatible generation_prompt: subject, supporting
+# objects, simple composition/environment - no narration, no mascot, no
+# readable text, no render-mode/camera words, no channel style block (the
+# image worker prepends CHANNEL.image_style later).
+_ROLE_SUBJECTS = {
+    "hook": "Magnifying glass hovering over scattered coins on a wooden detective desk",
+    "setup": "Stack of paperwork and a closed ledger on a warm wooden desk",
+    "explanation": "Balance scale holding coins on both pans against a plain paper backdrop",
+    "example": "Open briefcase with stacked coins and folded documents on a wooden desk",
+    "reveal": "Lifted sheet of paper uncovering hidden coins on a wooden desk",
+    "payoff": "Upward line curve drawn in ink on paper with coins stacked beside it",
+    "closing": "Closed ledger, fountain pen and stacked coins on a warm wooden desk",
+}
+_DEFAULT_SUBJECT = "Coins, folded documents and a magnifying glass on a wooden desk"
+_PROMPT_TAIL = "Muted paper background, simple spacious composition."
+
+
+def _mock_generation_prompt(role: str) -> str:
+    subject = _ROLE_SUBJECTS.get(role, _DEFAULT_SUBJECT)
+    return f"{subject}. {_PROMPT_TAIL}"
+
+
 class MockScenePlannerProvider:
     provider_name = "mock"
 
@@ -54,10 +77,7 @@ class MockScenePlannerProvider:
                     camera="medium shot",
                     composition="clean composition",
                     environment="minimal background",
-                    generation_prompt=(
-                        f"Finance_mascot fox financial detective {section.role}. "
-                        f"{' '.join(section.narration.split()[:15])}..."
-                    ),
+                    generation_prompt=_mock_generation_prompt(section.role),
                     required_assets=[MASCOT_ASSET_PATH],
                     mascot=Mascot(present=True, action=f"{section.role}_action", asset=MASCOT_ASSET_PATH),
                 )

@@ -44,7 +44,18 @@ class MascotConfig:
 
 @dataclass(frozen=True)
 class ChannelConfig:
-    """Who this channel is for and what it promises."""
+    """Who this channel is for and what it promises.
+
+    ``image_style`` is the channel-level visual style for generated
+    background/environment images. It lives HERE, once, instead of being
+    repeated inside every scene's ``generation_prompt``. The image-generation
+    worker composes the final prompt as::
+
+        STYLE + ", " + scene.generation_prompt
+
+    Scene prompts therefore stay scene-specific and compact (SDXL/CLIP has a
+    77-token limit); the style block is never repeated per scene.
+    """
 
     channel_id: str = "finance_mascot"
     language: str = "English"
@@ -55,6 +66,10 @@ class ChannelConfig:
     tone: str = "Friendly + educational"
     format: str = "YouTube Shorts"
     target_duration_seconds: int = 70
+    image_style: str = (
+        "hand-drawn financial editorial illustration, dark ink outlines, "
+        "warm paper and wood, muted brown and beige tones, subtle blue accents"
+    )
     mascot: MascotConfig = field(default_factory=MascotConfig)
 
     @property
@@ -75,6 +90,7 @@ class ChannelConfig:
             "tone": self.tone,
             "format": self.format,
             "target_duration_seconds": self.target_duration_seconds,
+            "image_style": self.image_style,
             "mascot": self.mascot.to_dict(),
         }
 

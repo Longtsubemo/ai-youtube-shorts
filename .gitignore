@@ -55,6 +55,14 @@ data/*/
 # Notebooks (Colab scratch)
 .ipynb_checkpoints/
 *.ipynb
+# ...except the worker notebook, which is a tracked deliverable.
+!notebooks/SDXL_Lightning_handoff.ipynb
+
+# Local design / investigation reports (not shared)
+reports/
+
+# Local Colab handoff staging (verified ZIP copies; local-only)
+handoff_staging/
 
 # IDE / editor
 .idea/
