@@ -443,15 +443,21 @@ instruction elsewhere in this file or in task reports.
 - If the branch, the remote, the ownership of existing changes, or the safe file
   scope is unclear, **stop and report the blocker** rather than guessing.
 
-### Files that are gitignored
+### Versioned and gitignored files
 
-`AGENTS.md`, `docs/PROJECT_PROGRESS.md` and `reports/` are listed in
-`.gitignore` and are local-only. They are **not** included in a task commit
+`AGENTS.md` is **tracked** and versioned in Git, so a fresh clone receives the
+project instructions. `docs/PROJECT_PROGRESS.md` and `reports/` are listed in
+`.gitignore` and are local-only: they are **not** included in a task commit
 unless the ignore policy is changed by an explicit, separately approved
 decision.
 
-- Do not change `.gitignore` as part of routine task work.
-- Do not force-add an ignored path.
+- Do not re-add `AGENTS.md` to `.gitignore`.
+- Do not change `.gitignore` as part of routine task work; the current ignore
+  policy is deliberate.
+- Do not change the ignore policy for `docs/PROJECT_PROGRESS.md` or `reports/`
+  without an explicit, separately approved decision.
+- Do not force-add an ignored path (`docs/PROJECT_PROGRESS.md`, `reports/`)
+  unless the user explicitly authorizes it.
 - If a required deliverable is ignored, complete the work, report the
   limitation, and ask before changing the policy.
 
