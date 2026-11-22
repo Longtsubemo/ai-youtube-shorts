@@ -1,6 +1,6 @@
 """REAL Gemini integration test - gated by GEMINI_INTEGRATION_TESTS=1.
 
-Requires a genuine GEMINI_API_KEY and makes a real network call, so it is
+Requires a genuine GEMINI_API_KEY (shell env or the repo .env) and makes a real network call, so it is
 excluded from the normal offline suite. It validates one end-to-end Stage 1
 (topic selection) run against the real provider.
 
@@ -14,8 +14,10 @@ video QA) are not covered here: they are no longer part of the architecture.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
+from dotenv import dotenv_values
 
 from agents.seo.config import load_config
 from agents.seo.history import SelectionHistory
@@ -32,7 +34,9 @@ def test_real_stage1_run_with_gemini_provider():
     from agents.seo.provider import build_topic_candidate_provider
 
     config = load_config("config/topic_selection.yaml")
-    provider = build_topic_candidate_provider("gemini", config=config)
+    # Shell env wins over .env, as with load_dotenv(); os.environ itself is not mutated.
+    env = {**dotenv_values(Path(__file__).resolve().parents[1] / ".env"), **os.environ}
+    provider = build_topic_candidate_provider("gemini", config=config, env=env)
     candidates = provider.list_candidates()
     assert len(candidates) >= 1
 
@@ -44,5 +48,5 @@ def test_real_stage1_run_with_gemini_provider():
     assert artifact["produced_by"]["prompt_version"] == provider.prompt_version
     assert artifact["data"]["selected_topic"]["topic_id"].startswith("t_")
     # Secrets never leak into the artifact even on a real run.
-    api_key = os.environ.get("GEMINI_API_KEY", "")
-    assert api_key not in selection.to_json()
+    api_key = env.get("GEMINI_API_KEY") or ""
+    assert api_key and api_key not in selection.to_json()
