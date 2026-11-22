@@ -10,3 +10,7 @@ pytest>=7.0,<9          # test suite
 # Gemini provider (optional; required only for --provider gemini)
 google-genai>=2.23,<3   # official Gemini SDK
 pydantic>=2,<3          # structured-output schemas (pulled by google-genai too)
+# Stage 5 - local video rendering (ffmpeg optional; OpenCV writer is the fallback)
+numpy>=2,<3
+opencv-python>=4.8,<6
+pillow>=10,<12
