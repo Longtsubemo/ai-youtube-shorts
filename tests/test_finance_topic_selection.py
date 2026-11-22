@@ -14,6 +14,8 @@ Covers the finance_mascot Stage 1 scope:
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -194,7 +196,14 @@ class TestChannelReachesSelector:
         mascot = load_config(CONFIG_PATH).channel.mascot
         assert mascot.asset_path
         assert mascot.asset_exists is False
-        assert not (ROOT / mascot.asset_path).exists(), "Stage 1 must not create the mascot asset"
+        # The image may exist locally (gitignored); it must never be committed.
+        if shutil.which("git") is None or not (ROOT / ".git").exists():
+            pytest.skip("not a git checkout")
+        tracked = subprocess.run(
+            ["git", "ls-files", "--", mascot.asset_path],
+            cwd=ROOT, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        assert not tracked, "mascot asset must not be tracked in git"
 
     def test_channel_config_is_reusable_standalone(self):
         channel = ChannelConfig()
