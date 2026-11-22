@@ -72,3 +72,6 @@ handoff_staging/
 # OS
 .DS_Store
 Thumbs.db
+
+# Channel mascot image (local-only; not shipped in the repo)
+assets/channels/finance_mascot/mascot.png
