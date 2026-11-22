@@ -51,11 +51,26 @@ class PipelineState:
         data["current_stage"] = Stage(data["current_stage"])
         return cls(**data)
 
+    @classmethod
+    def load_or_create(cls, path: str | Path, run_id: str) -> "PipelineState":
+        """Load existing state so stages accumulate; start fresh if missing or unreadable."""
+        path = Path(path)
+        if path.exists():
+            try:
+                state = cls.load(path)
+            except (ValueError, TypeError, KeyError, json.JSONDecodeError):
+                return cls(run_id=run_id)
+            state.run_id = run_id or state.run_id
+            return state
+        return cls(run_id=run_id)
+
     def advance_to(self, stage: Stage) -> None:
         self.current_stage = stage
         self.updated_at = _utc_now()
 
     def add_artifact(self, stage: Stage, path: str | Path) -> None:
-        self.artifacts.setdefault(stage.value, []).append(str(path))
+        paths = self.artifacts.setdefault(stage.value, [])
+        if str(path) not in paths:  # re-running a stage must not duplicate entries
+            paths.append(str(path))
         self.updated_at = _utc_now()
 

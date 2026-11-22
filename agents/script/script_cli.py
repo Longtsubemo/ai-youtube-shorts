@@ -101,7 +101,7 @@ def main() -> int:
     out_path = args.out or (run_dir / "script.json")
     write_script(script, out_path)
 
-    state = PipelineState(run_id=run_id)
+    state = PipelineState.load_or_create(run_dir / "state.json", run_id)
     state.advance_to(Stage.SCRIPT_GENERATION)
     state.add_artifact(Stage.SCRIPT_GENERATION, out_path)
     state.save(run_dir / "state.json")

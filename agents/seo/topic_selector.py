@@ -88,7 +88,7 @@ def main() -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(selection.to_json(), encoding="utf-8")
 
-    state = PipelineState(run_id=run_id)
+    state = PipelineState.load_or_create(Path("data") / run_id / "state.json", run_id)
     state.advance_to(Stage.TOPIC_SELECTION)
     state.add_artifact(Stage.TOPIC_SELECTION, out_path)
     state.save(Path("data") / run_id / "state.json")

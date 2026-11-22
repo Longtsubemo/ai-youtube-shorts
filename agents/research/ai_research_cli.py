@@ -94,7 +94,7 @@ def main() -> int:
     out_path = args.out or (run_dir / "research.json")
     write_ai_research(research, out_path)
 
-    state = PipelineState(run_id=run_id)
+    state = PipelineState.load_or_create(run_dir / "state.json", run_id)
     state.advance_to(Stage.AI_RESEARCH)
     state.add_artifact(Stage.AI_RESEARCH, out_path)
     state.save(run_dir / "state.json")

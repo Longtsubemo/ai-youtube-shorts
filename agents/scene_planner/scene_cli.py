@@ -94,7 +94,7 @@ def main() -> int:
         print(f"[scene_planner] warning [{issue.code}] {issue.message}")
     write_scene_plan(plan, out_path)
 
-    state = PipelineState(run_id=run_id)
+    state = PipelineState.load_or_create(run_dir / "state.json", run_id)
     state.advance_to(Stage.SCENE_PLANNING)
     state.add_artifact(Stage.SCENE_PLANNING, out_path)
     state.save(run_dir / "state.json")

@@ -97,16 +97,7 @@ def update_state(run_dir: str | Path, run_id: str, result: VideoResult) -> Path:
     """Record Stage 5 completion in ``state.json``."""
     run_dir = Path(run_dir)
     state_path = run_dir / "state.json"
-    state: PipelineState | None = None
-    if state_path.exists():
-        try:
-            state = PipelineState.load(state_path)
-        except (ValueError, TypeError, KeyError, json.JSONDecodeError):
-            state = None
-    if state is None:
-        state = PipelineState(run_id=run_id)
-    else:
-        state.run_id = run_id or state.run_id
+    state = PipelineState.load_or_create(state_path, run_id)
     state.advance_to(Stage.VIDEO_GENERATION)
     state.add_artifact(Stage.VIDEO_GENERATION, result.final_video)
     if result.video_path:
