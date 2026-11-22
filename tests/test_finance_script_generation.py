@@ -1046,13 +1046,7 @@ class TestStructuredOutput:
             "generate_structured",
             lambda self, *a, **k: calls.append(a[0]) or _script_schema(),
         )
-        monkeypatch.setattr(
-            provider_module.GeminiClient,
-            "generate_research",
-            lambda self, *a, **k: (_ for _ in ()).throw(
-                AssertionError("Stage 3 must not call generate_research")
-            ),
-        )
+        assert not hasattr(provider_module.GeminiClient, "generate_research")
         provider = _gemini_provider(default_config, FakeRawClient())
         provider.generate(build_script_context(selection, research))
         assert len(calls) == 1

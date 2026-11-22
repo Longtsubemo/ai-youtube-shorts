@@ -1,6 +1,6 @@
 """Gemini provider package."""
 
-from providers.gemini.client import GeminiClient, GroundedStructured, GroundingChunkInfo
+from providers.gemini.client import GeminiClient
 from providers.gemini.config import GeminiConfig
 from providers.gemini.errors import (
     GeminiAPIError,
@@ -26,7 +26,5 @@ __all__ = [
     "GeminiTimeoutError",
     "GeminiTopicProvider",
     "GeminiUnexpectedError",
-    "GroundedStructured",
-    "GroundingChunkInfo",
 ]
 

@@ -610,6 +610,15 @@ class TestNoSourceMachinery:
         assert "google_search" not in source
         assert "url_context" not in source
 
+    def test_gemini_client_has_no_search_grounding(self):
+        """The shared client must not offer Google Search / URL-context retrieval."""
+        from providers.gemini.client import GeminiClient
+
+        assert not hasattr(GeminiClient, "generate_research")
+        source = (ROOT / "providers" / "gemini" / "client.py").read_text(encoding="utf-8")
+        assert "google_search" not in source.lower()
+        assert "url_context" not in source.lower()
+
 
 # --------------------------------------------------------------------------- #
 # 9. numeric claims need no fabricated values
