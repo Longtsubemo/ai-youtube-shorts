@@ -76,10 +76,11 @@ Intentionally removed:
 | Stage | Status |
 | --- | --- |
 | Topic Selection | Implemented (mock default, Gemini opt-in) |
-| AI Research | Skeleton - artifact contract only, no Gemini call |
-| Script Generation | Skeleton - emits an empty placeholder `Script` |
-| Scene Planning | Skeleton - emits an empty placeholder `ScenePlan` |
-| Video Generation | Skeleton - writes non-playable placeholder bytes |
+| AI Research | Implemented (mock default, Gemini opt-in; model knowledge only, no web retrieval) |
+| Script Generation | Implemented (mock default, Gemini opt-in) |
+| Scene Planning | Implemented (mock default, Gemini opt-in; prompt `short_scene-v2`) |
+| Video Generation | Implemented (local renderer only; ffmpeg if present, else OpenCV) |
 
-Each skeleton CLI prints an explicit `NOT IMPLEMENTED` note and exits 2 if its
-input artifact is missing.
+Each stage CLI exits 2 if its input artifact is missing. Every stage loads and
+appends to `state.json` (`PipelineState.load_or_create`), so it accumulates
+across the run. `PipelineState.status` is not yet updated by any stage.
