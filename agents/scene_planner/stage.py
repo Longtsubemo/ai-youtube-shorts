@@ -51,6 +51,28 @@ def build_scene_plan_context(script: Script) -> dict:
     }
 
 
+def rescale_durations(durations: list[int], budget: int) -> list[int]:
+    """Scale integer durations proportionally to sum to `budget` (each >= 1s).
+
+    Largest-remainder rounding keeps the total exact. Used because the model's
+    per-scene timing drifts from the script's estimate (seen: 90s for a 72s script).
+    """
+    n = len(durations)
+    if n == 0 or budget <= 0 or sum(durations) == budget:
+        return list(durations)
+    budget = max(budget, n)  # every scene needs at least 1s
+    spare = budget - n
+    weights = [max(d - 1, 0) for d in durations]  # the 1s floor is handed out first
+    if not any(weights):
+        weights = [1] * n
+    exact = [spare * w / sum(weights) for w in weights]
+    out = [1 + int(x) for x in exact]
+    by_remainder = sorted(range(n), key=lambda i: exact[i] - int(exact[i]), reverse=True)
+    for i in by_remainder[: budget - sum(out)]:
+        out[i] += 1
+    return out
+
+
 def run_scene_planning(
     script: Script,
     provider,
@@ -73,8 +95,14 @@ def run_scene_planning(
     if created_at is not None:
         updates["created_at"] = created_at
     plan = replace(plan, **updates)
-    if plan.total_scene_duration_seconds <= 0:
-        plan = replace(plan, total_scene_duration_seconds=plan.estimated_seconds)
+    budget = script.estimated_seconds or script.duration_target_seconds
+    scaled = rescale_durations([sc.duration_seconds for sc in plan.scenes], budget)
+    plan = replace(
+        plan,
+        scenes=[replace(sc, duration_seconds=d) for sc, d in zip(plan.scenes, scaled)],
+    )
+    # The total always mirrors the scenes; a model-reported total is not trusted.
+    plan = replace(plan, total_scene_duration_seconds=plan.estimated_seconds)
     plan = plan.validate()
 
     # SDXL/CLIP image-prompt gate: fail clearly on invalid generation_prompt
