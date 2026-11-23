@@ -1,0 +1,4 @@
+# Experiment only. Needs Python 3.12 (kokoro/misaki 0.9.x do not support 3.13 yet).
+# Install torch first from the CPU index: pip install torch --index-url https://download.pytorch.org/whl/cpu
+kokoro==0.9.4
+soundfile
