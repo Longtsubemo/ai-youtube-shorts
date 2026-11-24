@@ -21,6 +21,7 @@ No network access, no hosted model calls, no image-generation API, no scoring an
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 from pathlib import Path
@@ -43,6 +44,7 @@ from agents.video_generation.render_spec import (
     RenderSpec,
 )
 from agents.video_generation.translator import (
+    MASCOT_LAYOUTS,
     TRANSLATOR_VERSION,
     collect_scene_asset_ids,
     translate_scene_plan,
@@ -113,6 +115,16 @@ def update_state(run_dir: str | Path, run_id: str, result: VideoResult) -> Path:
     return state.save(state_path)
 
 
+def pick_variant(run_id: str) -> dict:
+    """Per-video look (mascot side, caption colour), stable for a run id."""
+    # shortcut: hash-based, so consecutive runs can repeat a look; rotate from run history if
+    # that becomes visible on the channel.
+    n = int.from_bytes(hashlib.sha256(run_id.encode("utf-8")).digest()[:4], "big")
+    layouts, colours = sorted(MASCOT_LAYOUTS), sorted(tts.CAPTION_HIGHLIGHTS)
+    return {"layout": layouts[n % len(layouts)],
+            "caption_colour": colours[(n // len(layouts)) % len(colours)]}
+
+
 def _even_dimensions(width: int, height: int) -> tuple[int, int, str | None]:
     """MP4 pixel formats need even dimensions; normalize and say so."""
     even_w = max(2, int(width) - int(width) % 2)
@@ -150,6 +162,7 @@ def run_video_generation(
 
     width, height, dimension_note = _even_dimensions(int(width), int(height))
     fps = int(fps)
+    variant = pick_variant(resolved_run_id)
 
     narration_info = None
     if narration_voice:
@@ -166,7 +179,8 @@ def run_video_generation(
         words = tts.word_timeline(timing, plan)
         words_path.write_text(json.dumps({
             "voice": narration_voice, "speed": narration_speed, "words": words}, indent=2), encoding="utf-8")
-        captions_path = (tts.write_captions(words, run_dir / "video" / "narration.ass", width, height)
+        captions_path = (tts.write_captions(words, run_dir / "video" / "narration.ass", width, height,
+                                            highlight=tts.CAPTION_HIGHLIGHTS[variant["caption_colour"]])
                          if captions else None)
         narration_info = {
             "engine": "kokoro", "voice": narration_voice, "speed": narration_speed,
@@ -183,6 +197,7 @@ def run_video_generation(
         fps=fps,
         run_id=resolved_run_id,
         text_overrides=text_overrides,
+        layout=variant["layout"],
     )
     spec_path = write_render_spec(spec, run_dir / "video" / RENDER_SPEC_FILENAME)
 
@@ -206,6 +221,7 @@ def run_video_generation(
         result.notes["synthesized_test_assets"] = sorted(synthesized_ids)
     if dimension_note:
         result.notes["dimension_normalization"] = dimension_note
+    result.notes["variant"] = variant
 
     final_path = Path(result.final_video)
     if narration_info:

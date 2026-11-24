@@ -100,3 +100,26 @@ def test_captions_group_words_and_highlight_each_spoken_word(tmp_path):
     assert "0:00:00.40,0:00:00.60" in events[2]       # caption held to the next chunk's start (short gap)
     assert "0:00:00.60,0:00:00.80" in events[3]       # not held across the long pause
     assert "PlayResY: 1920" in ass and r"\pos(540,864)" in events[0]
+
+
+def test_variant_is_stable_per_run_and_spreads_across_runs():
+    from agents.video_generation.stage import pick_variant
+    from agents.video_generation.translator import MASCOT_LAYOUTS
+
+    assert pick_variant("run-a") == pick_variant("run-a")
+    looks = {tuple(pick_variant(f"run-{i}").values()) for i in range(60)}
+    assert {layout for layout, _ in looks} == set(MASCOT_LAYOUTS)
+    assert {colour for _, colour in looks} == set(tts.CAPTION_HIGHLIGHTS)
+
+
+def test_layout_moves_the_mascot(tmp_path):
+    from agents.scene_planner.provider import MockScenePlannerProvider
+    from agents.video_generation.translator import translate_scene_plan
+    from tests.test_scene_planner_generation_prompts import build_script
+
+    plan = MockScenePlannerProvider().generate({"script": build_script()})
+    xs = {}
+    for layout in ("left", "center", "right"):
+        spec = translate_scene_plan(plan, layout=layout).to_dict()
+        xs[layout] = next(e["transform"]["x"] for sc in spec["scenes"] for e in sc["elements"] if e["id"] == "mascot")
+    assert xs["left"] < xs["center"] < xs["right"]

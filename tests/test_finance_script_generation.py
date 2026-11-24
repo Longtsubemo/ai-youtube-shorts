@@ -70,7 +70,7 @@ from tests.gemini_test_utils import FakeRawClient, make_client
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = ROOT / "config" / "topic_selection.yaml"
 MOCK_CANDIDATES = ROOT / "data" / "mock" / "topic_candidates.json"
-PROMPT_PATH = ROOT / "prompts" / "script" / "short_script-v1.txt"
+PROMPT_PATH = ROOT / "prompts" / "script" / "short_script-v2.txt"
 
 # Phrasings a real script must never contain (personalized-advice directives).
 FORBIDDEN_NARRATION = (
@@ -348,6 +348,9 @@ class TestGeminiProvider:
         assert CHANNEL.channel_promise in prompt
         assert CHANNEL.audience in prompt
         assert CHANNEL.mascot.role in prompt
+        context = build_script_context(selection, research)
+        assert context["narrative_format"] in prompt and "{narrative_format}" not in prompt
+        assert script.produced_by["narrative_format"] == context["narrative_format"]
 
     def test_produced_by_records_model_and_prompt_version(self, selection, research, default_config):
         fake = FakeRawClient()
@@ -1003,13 +1006,16 @@ class TestPromptWordBudget:
         assert "Do NOT predict prices, returns, or outcomes." in prompt
         assert "personalized investment, tax, or financial advice" in prompt
 
-    def test_word_budget_did_not_disturb_optional_detective_framing(self):
+    def test_detective_framing_optional_and_format_rotated_per_topic(self):
+        from agents.script.stage import NARRATIVE_FORMATS, narrative_format_for
+
         prompt = self._prompt()
         assert "style, not a mandatory formula" in prompt
-        assert (
-            "equally valid structures include a straight question, a story, a comparison"
-            in self._flat()
-        )
+        assert "{narrative_format}" in prompt
+        assert len(NARRATIVE_FORMATS) >= 5
+        assert narrative_format_for("t_a") == narrative_format_for("t_a")  # stable per topic
+        used = {narrative_format_for(f"t_{i}") for i in range(50)}
+        assert len(used) >= 5  # topics spread across formats
 
     def test_word_budget_did_not_disturb_no_browsing_or_citations(self):
         prompt = self._prompt()

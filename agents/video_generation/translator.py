@@ -94,6 +94,12 @@ CAMERA_MOTION_TABLE: tuple[tuple[tuple[str, ...], tuple[dict, ...]], ...] = (
 DEFAULT_CAMERA_MOTION: tuple[dict, ...] = ({"type": "zoom", "from": 1.0, "to": 1.04},)
 
 MASCOT_POSITION = {"x": 0.5, "y": 0.7, "scale": 0.45}
+# Per-video mascot placements; Stage 5 picks one per run so videos do not share one layout.
+MASCOT_LAYOUTS = {
+    "center": MASCOT_POSITION,
+    "left": {"x": 0.27, "y": 0.72, "scale": 0.4},
+    "right": {"x": 0.73, "y": 0.72, "scale": 0.4},
+}
 MAIN_VISUAL_POSITION = {"x": 0.5, "y": 0.45, "scale": 1.0}
 SECONDARY_POSITION = {"x": 0.5, "y": 0.32, "scale": 0.6}
 TEXT_POSITION = {"x": 0.5, "y": 0.16, "scale": 1.0}
@@ -191,6 +197,7 @@ def translate_scene(
     order: int | None = None,
     raw: dict | None = None,
     text_overrides: dict[str, str] | None = None,
+    layout: str = "center",
 ) -> SceneRenderSpec:
     """Translate one scene into a generic, renderable scene spec."""
     raw = dict(raw or {})
@@ -237,6 +244,7 @@ def translate_scene(
 
     if scene.mascot.present:
         mascot_ref = scene.mascot.asset or plan.mascot_asset_path or MASCOT_ASSET_PATH
+        mascot_at = MASCOT_LAYOUTS[layout]
         elements.append(
             RenderElement(
                 id="mascot",
@@ -244,9 +252,9 @@ def translate_scene(
                 asset=mascot_ref,
                 layer=LAYER_MASCOT,
                 transform=Transform(
-                    x=MASCOT_POSITION["x"],
-                    y=MASCOT_POSITION["y"],
-                    scale=MASCOT_POSITION["scale"],
+                    x=mascot_at["x"],
+                    y=mascot_at["y"],
+                    scale=mascot_at["scale"],
                     fit="contain",
                 ),
                 animations=mascot_idle_animations(duration),
@@ -330,6 +338,7 @@ def translate_scene_plan(
     run_id: str | None = None,
     background: tuple[int, int, int] = DEFAULT_BACKGROUND,
     text_overrides: dict[str, str] | None = None,
+    layout: str = "center",
 ) -> RenderSpec:
     """Translate a full ``ScenePlan`` (or its raw dict) into a ``RenderSpec``.
 
@@ -357,6 +366,7 @@ def translate_scene_plan(
             order=order,
             raw=raw_scenes.get(scene.scene_id, {}),
             text_overrides=text_overrides,
+            layout=layout,
         )
         for order, _scene_id, scene in entries
     ]

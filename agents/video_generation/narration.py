@@ -33,7 +33,9 @@ WORKER_TIMEOUT_SECONDS = 1800
 CAPTION_MAX_WORDS = 3
 CAPTION_MAX_GAP = 0.4  # seconds of silence that starts a new caption
 CAPTION_Y = 0.45  # above the mascot's head (~0.53 at 1080x1920) and clear of the Shorts UI
-CAPTION_HIGHLIGHT = "&H0000D7FF&"  # ASS BGR: gold for the word being spoken
+# ASS colours are &HAABBGGRR. One is picked per video for the word being spoken.
+CAPTION_HIGHLIGHTS = {"gold": "&H0000D7FF&", "cyan": "&H00FFE100&", "lime": "&H0050FF7A&", "coral": "&H00607BFF&"}
+CAPTION_HIGHLIGHT = CAPTION_HIGHLIGHTS["gold"]
 
 
 class NarrationError(RuntimeError):
@@ -120,7 +122,8 @@ def _ass_text(word: str) -> str:
     return word.replace("\\", "").replace("{", "").replace("}", "").upper()
 
 
-def write_captions(words: list[dict], path: Path, width: int, height: int) -> Path:
+def write_captions(words: list[dict], path: Path, width: int, height: int,
+                   highlight: str = CAPTION_HIGHLIGHT) -> Path:
     """One ASS event per spoken word: the chunk, with that word highlighted."""
     events = []
     chunks = caption_chunks(words)
@@ -132,7 +135,7 @@ def write_captions(words: list[dict], path: Path, width: int, height: int) -> Pa
         for j, word in enumerate(chunk):
             start = word["start"] if j else chunk[0]["start"]
             end = chunk[j + 1]["start"] if j + 1 < len(chunk) else chunk_end
-            text = " ".join(f"{{\\c{CAPTION_HIGHLIGHT}}}{_ass_text(w['word'])}{{\\c&H00FFFFFF&}}" if k == j
+            text = " ".join(f"{{\\c{highlight}}}{_ass_text(w['word'])}{{\\c&H00FFFFFF&}}" if k == j
                             else _ass_text(w["word"]) for k, w in enumerate(chunk))
             events.append(f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Caption,,0,0,0,,"
                           f"{{\\pos({width // 2},{round(height * CAPTION_Y)})}}{text}")

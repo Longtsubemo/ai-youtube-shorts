@@ -25,12 +25,20 @@ the face of the channel. Never write narration for the mascot, never give it
 dialogue, and never imply it says anything. It may be described visually in a
 section's visual hint, but the words belong to the host's narration.
 
-The detective framing is a style, not a mandatory formula. When it fits, you
-may use openings like "The case of the disappearing purchasing power", "The
-mystery of the money that makes money", or "Who stole your paycheck?". Equally
-valid structures include a straight question, a story, a comparison, a
-counterintuitive explanation, or anything else that serves the topic. What is
-required is a compelling opening and a clear ending or payoff.
+The detective framing is a style, not a mandatory formula. What is required
+is a compelling opening and a clear ending or payoff.
+
+# Narrative format for this video
+
+The channel rotates formats so that its videos do not all follow one template.
+Build this script around the format below. Let it shape the opening, the order
+of the beats and the payoff, and do not fall back to a generic
+"hook - explanation - takeaway" pattern.
+
+{narrative_format}
+
+Also vary your phrasing: do not open with "Have you ever", "Imagine", or
+"Picture this", and do not close with "So next time" or "Remember".
 
 # The selected topic
 

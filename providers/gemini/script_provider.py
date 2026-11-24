@@ -31,8 +31,8 @@ from agents.seo.config import TopicSelectionConfig
 from providers.gemini.client import GeminiClient
 from providers.gemini.errors import GeminiSchemaValidationError
 
-PROMPT_VERSION = "script/short_script-v1"
-DEFAULT_PROMPT_PATH = Path("prompts") / "script" / "short_script-v1.txt"
+PROMPT_VERSION = "script/short_script-v2"
+DEFAULT_PROMPT_PATH = Path("prompts") / "script" / "short_script-v2.txt"
 GENERATED_BY = "gemini_script_provider_v1"
 
 
@@ -116,7 +116,8 @@ class GeminiScriptProvider:
                 sections=sections,
                 pillar=str(context.get("pillar") or ""),
                 channel_id=self._channel_id(),
-                produced_by=self.produced_by,
+                produced_by={**self.produced_by,
+                             "narrative_format": str(context.get("narrative_format") or "")},
                 educational_notice=EDUCATIONAL_NOTICE,
                 mascot_note=MASCOT_NOTE,
                 mascot_speaks=MASCOT_SPEAKS,
@@ -210,6 +211,7 @@ class GeminiScriptProvider:
             "{duration_min_seconds}": "60",
             "{mascot_role}": channel.mascot.role if channel else "financial_detective",
             "{research_material}": research_block,
+            "{narrative_format}": str(context.get("narrative_format") or "(free choice)"),
         }
 
         rendered = path.read_text(encoding="utf-8")

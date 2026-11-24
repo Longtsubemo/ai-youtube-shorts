@@ -14,6 +14,8 @@ replaceable and the deterministic mock keeps tests key-free.
 
 from __future__ import annotations
 
+import hashlib
+
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -53,6 +55,34 @@ def write_script(script: Script, out_path: str | Path) -> Path:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(script.to_dict(), indent=2), encoding="utf-8")
     return out_path
+
+
+# Rotated per topic so the channel's videos do not share one structure
+# (YouTube's inauthentic-content policy targets templated, repetitive uploads).
+NARRATIVE_FORMATS: tuple[str, ...] = (
+    "Myth-buster: state a popular belief about the topic, then take it apart step by step and "
+    "end on what is actually true.",
+    "Case file: tell it as a short detective case - a puzzling clue, the investigation, and the "
+    "culprit revealed at the end.",
+    "Story: follow one ordinary, fictional person through a concrete situation; the concept "
+    "emerges from what happens to them.",
+    "Comparison: put two choices, people or paths side by side and reveal why they end up in "
+    "very different places.",
+    "Counterintuitive reveal: open with a surprising claim that sounds wrong, then show the "
+    "mechanism that makes it right.",
+    "What-if chain: ask one 'what happens if' question and walk the chain of consequences to its "
+    "end.",
+    "Breakdown: take one everyday thing apart piece by piece, like a mechanic opening an engine, "
+    "and show the hidden part that matters.",
+)
+
+
+def narrative_format_for(topic_id: str) -> str:
+    """Deterministic per topic, so reruns of a topic keep their format."""
+    # shortcut: hash-based, so two consecutive topics can land on the same format; use the
+    # topic history to rotate if that becomes visible on the channel.
+    digest = hashlib.sha256(topic_id.encode("utf-8")).digest()
+    return NARRATIVE_FORMATS[int.from_bytes(digest[:4], "big") % len(NARRATIVE_FORMATS)]
 
 
 def build_script_context(selection: TopicSelection, research: AIResearch) -> dict:
@@ -98,6 +128,7 @@ def build_script_context(selection: TopicSelection, research: AIResearch) -> dic
         "description": str(selected.get("description") or "").strip(),
         "research": research,
         "run_id": selection.run_id,
+        "narrative_format": narrative_format_for(str(selected["topic_id"]).strip()),
     }
 
 
