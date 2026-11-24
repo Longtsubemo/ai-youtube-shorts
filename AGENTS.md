@@ -265,6 +265,12 @@ tooling, not to the pipeline.
 
 All five accept `--run-id`. Stages 1–4 also accept `--config` and `--out`;
 Stage 5 accepts `--scene-plan`, `--encoder`, `--width`, `--height` and `--fps`.
+Stage 5 narration is opt-in: `--narration kokoro` (default `none`), with
+`--voice` (default `bm_george`), `--narration-speed` (default `1.25`) and
+`--tts-python`. Kokoro runs as a subprocess in a separate Python 3.12 venv
+(`.venv-tts`, see `requirements-tts.txt`, or `KOKORO_PYTHON`) because it does
+not install on the project's Python 3.13. With narration, each scene lasts as
+long as its audio, and the voice is muxed into the MP4.
 
 Provider support is **not** uniform across stages:
 

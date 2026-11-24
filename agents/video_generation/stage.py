@@ -13,7 +13,10 @@ MP4 files:
             -> data/<run_id>/video.json
             -> state.json = VIDEO_GENERATION
 
-No network access, no model calls, no image-generation API, no scoring and no output gating.
+With ``narration_voice`` set, Kokoro TTS (see ``narration.py``) narrates each
+scene first, scene lengths follow the audio, and the track is muxed into the MP4.
+
+No network access, no hosted model calls, no image-generation API, no scoring and no output gating.
 """
 
 from __future__ import annotations
@@ -24,7 +27,8 @@ from pathlib import Path
 
 from agents.scene_planner.scene_models import ScenePlan, ScenePlanningError
 from agents.video_generation.assets import AssetResolver
-from agents.video_generation.encoder import VideoEncodingError, resolve_backend
+from agents.video_generation.encoder import VideoEncodingError, detect_ffmpeg, resolve_backend
+from agents.video_generation import narration as tts
 from agents.video_generation.models import VideoResult
 from agents.video_generation.placeholder_assets import synthesize_scene_assets
 from agents.video_generation.provider import (
@@ -130,6 +134,9 @@ def run_video_generation(
     encoder: str = "auto",
     synthesize_test_assets: bool = False,
     text_overrides: dict[str, str] | None = None,
+    narration_voice: str | None = None,
+    narration_speed: float = tts.DEFAULT_SPEED,
+    tts_python: str | Path | None = None,
 ) -> VideoResult:
     """Translate, render, assemble and write every Stage 5 artifact."""
     run_dir = Path(run_dir)
@@ -142,6 +149,28 @@ def run_video_generation(
 
     width, height, dimension_note = _even_dimensions(int(width), int(height))
     fps = int(fps)
+
+    narration_info = None
+    if narration_voice:
+        ffmpeg = detect_ffmpeg()
+        if not ffmpeg:
+            raise tts.NarrationError("narration needs an FFmpeg executable to mux audio")
+        tts_dir = run_dir / "video" / "narration"
+        timing = tts.synthesize(plan, tts_dir, tts_python=tts.resolve_tts_python(tts_python),
+                                voice=narration_voice, speed=narration_speed)
+        planned = {sc.scene_id: sc.duration_seconds for sc in plan.scenes}
+        plan = tts.fit_plan_to_narration(plan, timing, fps)
+        track = tts.build_narration_track(tts_dir, plan, run_dir / "video" / "narration.wav")
+        words_path = run_dir / "video" / "narration.json"
+        words_path.write_text(json.dumps({
+            "voice": narration_voice, "speed": narration_speed,
+            "words": tts.word_timeline(timing, plan)}, indent=2), encoding="utf-8")
+        narration_info = {
+            "engine": "kokoro", "voice": narration_voice, "speed": narration_speed,
+            "track": str(track), "words": str(words_path),
+            "scene_seconds": {sc.scene_id: {"planned": planned[sc.scene_id], "narrated": sc.duration_seconds}
+                              for sc in plan.scenes},
+        }
 
     spec = translate_scene_plan(
         plan,
@@ -175,6 +204,11 @@ def run_video_generation(
         result.notes["dimension_normalization"] = dimension_note
 
     final_path = Path(result.final_video)
+    if narration_info:
+        narrated = final_path.with_name("final_narrated.mp4")
+        tts.mux_narration(final_path, Path(narration_info["track"]), narrated, ffmpeg)
+        narrated.replace(final_path)
+        result.notes["narration"] = narration_info
     video_path = run_dir / "video.mp4"
     shutil.copyfile(final_path, video_path)
 

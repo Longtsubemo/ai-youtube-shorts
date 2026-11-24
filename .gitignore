@@ -11,6 +11,7 @@ dist/
 .venv/
 venv/
 env/
+.venv-tts/
 
 # Cache / tooling
 .pytest_cache/

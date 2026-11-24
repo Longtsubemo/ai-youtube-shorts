@@ -15,7 +15,8 @@ Outputs::
 
 Exit codes: 0 success, 2 input/structure problem, 3 render/encode problem.
 
-No network access and no model calls are made.
+No network access and no hosted model calls are made. ``--narration kokoro`` runs
+local Kokoro TTS in a Python 3.12 subprocess (see agents/video_generation/narration.py).
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from uuid import uuid4
 
 from agents.video_generation.encoder import BACKENDS, VideoEncodingError, detect_ffmpeg
 from agents.video_generation.models import VideoResult
+from agents.video_generation.narration import DEFAULT_SPEED, DEFAULT_VOICE, NarrationError
 from agents.video_generation.provider import (
     VideoGeneratorError,
     available_providers,
@@ -60,6 +62,9 @@ def _print_summary(result: VideoResult) -> None:
             f"[video_generation]   {clip.scene_id}: {clip.frames} frames "
             f"{clip.duration_seconds:.2f}s [{status}] {clip.path}"
         )
+    narration = result.notes.get("narration")
+    if narration:
+        print(f"[video_generation] narration: kokoro {narration['voice']} x{narration['speed']} -> {narration['track']}")
     print(f"[video_generation] final video: {result.final_video}")
     print(f"[video_generation] video.mp4:   {result.video_path}")
     print(f"[video_generation] metadata:    {result.metadata_path}")
@@ -111,6 +116,17 @@ def build_parser() -> argparse.ArgumentParser:
             "channel assets such as the mascot are never written)"
         ),
     )
+    parser.add_argument(
+        "--narration",
+        choices=["none", "kokoro"],
+        default="none",
+        help="narrate scenes with local Kokoro TTS; scene lengths then follow the audio (default: none)",
+    )
+    parser.add_argument("--voice", default=DEFAULT_VOICE, help=f"Kokoro voice (default: {DEFAULT_VOICE})")
+    parser.add_argument("--narration-speed", type=float, default=DEFAULT_SPEED,
+                        help=f"Kokoro speaking speed (default: {DEFAULT_SPEED})")
+    parser.add_argument("--tts-python", default=None,
+                        help="Python 3.12 with kokoro installed (default: KOKORO_PYTHON or .venv-tts)")
     return parser
 
 
@@ -149,11 +165,14 @@ def main(argv: list[str] | None = None) -> int:
             fps=args.fps,
             encoder=args.encoder,
             synthesize_test_assets=args.synthesize_test_assets,
+            narration_voice=args.voice if args.narration == "kokoro" else None,
+            narration_speed=args.narration_speed,
+            tts_python=args.tts_python,
         )
     except VideoGenerationError as exc:
         print(f"[video_generation] input error: {exc}")
         return 2
-    except (VideoGeneratorError, VideoEncodingError) as exc:
+    except (VideoGeneratorError, VideoEncodingError, NarrationError) as exc:
         print(f"[video_generation] render error: {exc}")
         return 3
     except OSError as exc:
