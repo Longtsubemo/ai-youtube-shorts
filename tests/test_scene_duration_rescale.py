@@ -7,7 +7,12 @@ from dataclasses import replace
 import pytest
 
 from agents.scene_planner.provider import MockScenePlannerProvider
-from agents.scene_planner.stage import rescale_durations, run_scene_planning
+from agents.scene_planner.stage import (
+    NARRATION_WORDS_PER_SECOND,
+    narration_seconds,
+    rescale_durations,
+    run_scene_planning,
+)
 from tests.test_scene_planner_generation_prompts import build_script
 
 
@@ -43,9 +48,18 @@ class _PaddedProvider(MockScenePlannerProvider):
         return replace(plan, scenes=[replace(s, duration_seconds=s.duration_seconds * 2) for s in plan.scenes])
 
 
-def test_run_scene_planning_fits_plan_to_script_estimate():
+def test_run_scene_planning_times_scenes_from_narration_pace():
     script = build_script()
     plan = run_scene_planning(script, _PaddedProvider(), run_id="rescale-test")
-    budget = script.estimated_seconds or script.duration_target_seconds
-    assert plan.estimated_seconds == budget
-    assert plan.total_scene_duration_seconds == budget
+    budget = narration_seconds(script.narration)
+    assert budget == max(1, round(len(script.narration.split()) / NARRATION_WORDS_PER_SECOND))
+    assert plan.estimated_seconds == plan.total_scene_duration_seconds == budget
+    # the model's padded durations are ignored; longer narration gets a longer scene
+    words = [len(sc.narration.split()) for sc in plan.scenes]
+    longest = max(range(len(words)), key=words.__getitem__)
+    assert plan.scenes[longest].duration_seconds == max(sc.duration_seconds for sc in plan.scenes)
+
+
+def test_narration_seconds_matches_measured_voice():
+    assert narration_seconds(" ".join(["w"] * 154)) == 59  # measured: 59.15s
+    assert narration_seconds("") == 1

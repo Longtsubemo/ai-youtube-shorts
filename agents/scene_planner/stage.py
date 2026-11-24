@@ -39,6 +39,15 @@ def _norm(s: str) -> str:
     return " ".join(s.split()).strip()
 
 
+# Measured pace of the channel voice (Kokoro bm_george at 1.25x): 154 words in 59.15s.
+# Stage 5 times scenes from the real audio; this keeps the plan (and image jobs) close to it.
+NARRATION_WORDS_PER_SECOND = 2.6
+
+
+def narration_seconds(text: str) -> int:
+    return max(1, round(len(text.split()) / NARRATION_WORDS_PER_SECOND))
+
+
 def build_scene_plan_context(script: Script) -> dict:
     if not script.topic_id or not script.topic_id.strip():
         raise ScenePlanningError("script has no topic_id")
@@ -54,8 +63,7 @@ def build_scene_plan_context(script: Script) -> dict:
 def rescale_durations(durations: list[int], budget: int) -> list[int]:
     """Scale integer durations proportionally to sum to `budget` (each >= 1s).
 
-    Largest-remainder rounding keeps the total exact. Used because the model's
-    per-scene timing drifts from the script's estimate (seen: 90s for a 72s script).
+    Largest-remainder rounding keeps the total exact.
     """
     n = len(durations)
     if n == 0 or budget <= 0 or sum(durations) == budget:
@@ -95,8 +103,10 @@ def run_scene_planning(
     if created_at is not None:
         updates["created_at"] = created_at
     plan = replace(plan, **updates)
-    budget = script.estimated_seconds or script.duration_target_seconds
-    scaled = rescale_durations([sc.duration_seconds for sc in plan.scenes], budget)
+    # The model's per-scene timing drifts (seen: 90s for a 72s script), so durations
+    # come from each scene's narration length at the voice's pace instead.
+    budget = narration_seconds(script.narration)
+    scaled = rescale_durations([len(sc.narration.split()) for sc in plan.scenes], budget)
     plan = replace(
         plan,
         scenes=[replace(sc, duration_seconds=d) for sc, d in zip(plan.scenes, scaled)],
