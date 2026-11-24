@@ -265,12 +265,14 @@ tooling, not to the pipeline.
 
 All five accept `--run-id`. Stages 1–4 also accept `--config` and `--out`;
 Stage 5 accepts `--scene-plan`, `--encoder`, `--width`, `--height` and `--fps`.
-Stage 5 narration is opt-in: `--narration kokoro` (default `none`), with
+Stage 5 narrates by default: `--narration kokoro` (the default; `none` renders
+silent video), with
 `--voice` (default `bm_george`), `--narration-speed` (default `1.25`) and
 `--tts-python`. Kokoro runs as a subprocess in a separate Python 3.12 venv
 (`.venv-tts`, see `requirements-tts.txt`, or `KOKORO_PYTHON`) because it does
 not install on the project's Python 3.13. With narration, each scene lasts as
-long as its audio, and the voice is muxed into the MP4.
+long as its audio, the voice is muxed into the MP4, and word captions are
+burned in (`--no-captions` to skip).
 
 Provider support is **not** uniform across stages:
 
@@ -384,7 +386,9 @@ or credential value; state only that it is configured.
 Per-stage provider defaults are `mock` for Stages 1–4 and `local` for Stage 5.
 Real model calls are opt-in with `--provider gemini` in Stages 1–4 only; Stage 5
 has no Gemini provider and accepts only `--provider local`. Default runs must
-stay offline and deterministic.
+stay offline and deterministic. Exception: Stage 5's default Kokoro narration
+runs locally but downloads its model from Hugging Face on first use and needs
+`.venv-tts`; tests and offline checks pass `--narration none`.
 
 Future direction: Ollama + Qwen may be used as a fallback when Gemini API
 quota or rate limits are encountered.

@@ -15,7 +15,7 @@ Outputs::
 
 Exit codes: 0 success, 2 input/structure problem, 3 render/encode problem.
 
-No network access and no hosted model calls are made. ``--narration kokoro`` runs
+No network access and no hosted model calls are made. Narration (default) runs
 local Kokoro TTS in a Python 3.12 subprocess (see agents/video_generation/narration.py).
 """
 
@@ -119,14 +119,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--narration",
         choices=["none", "kokoro"],
-        default="none",
-        help="narrate scenes with local Kokoro TTS; scene lengths then follow the audio (default: none)",
+        default="kokoro",
+        help="narrate scenes with local Kokoro TTS; scene lengths then follow the audio (default: kokoro; "
+             "'none' renders silent video from the plan's durations)",
     )
     parser.add_argument("--voice", default=DEFAULT_VOICE, help=f"Kokoro voice (default: {DEFAULT_VOICE})")
     parser.add_argument("--narration-speed", type=float, default=DEFAULT_SPEED,
                         help=f"Kokoro speaking speed (default: {DEFAULT_SPEED})")
     parser.add_argument("--no-captions", action="store_true",
-                        help="with --narration, skip the burned-in word captions")
+                        help="skip the burned-in word captions on narrated videos")
     parser.add_argument("--tts-python", default=None,
                         help="Python 3.12 with kokoro installed (default: KOKORO_PYTHON or .venv-tts)")
     return parser

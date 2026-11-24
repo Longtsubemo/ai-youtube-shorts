@@ -231,7 +231,7 @@ def test_cli_renders_run_end_to_end(tmp_path, monkeypatch, capsys):
     write_run(Path("data") / run_id, scene_count=2, duration=1)
 
     exit_code = video_cli_main(
-        ["--run-id", run_id, "--width", str(WIDTH), "--height", str(HEIGHT), "--fps", str(FPS)]
+        ["--run-id", run_id, "--narration", "none", "--width", str(WIDTH), "--height", str(HEIGHT), "--fps", str(FPS)]
     )
     out = capsys.readouterr().out
     assert exit_code == 0, out
@@ -255,6 +255,8 @@ def test_cli_encoder_ffmpeg_reports_clear_error_when_absent(tmp_path, monkeypatc
         [
             "--run-id",
             run_id,
+            "--narration",
+            "none",
             "--encoder",
             "ffmpeg",
             "--width",

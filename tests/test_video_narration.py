@@ -80,9 +80,9 @@ def test_missing_tts_python_is_a_clear_error(monkeypatch, tmp_path):
         tts.resolve_tts_python(None)
 
 
-def test_cli_narration_is_opt_in_with_channel_voice_defaults():
+def test_cli_narrates_with_channel_voice_by_default():
     args = build_parser().parse_args([])
-    assert args.narration == "none"
+    assert args.narration == "kokoro" and not args.no_captions
     assert (args.voice, args.narration_speed) == ("bm_george", 1.25)
 
 
