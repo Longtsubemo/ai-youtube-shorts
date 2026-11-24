@@ -84,3 +84,19 @@ def test_cli_narration_is_opt_in_with_channel_voice_defaults():
     args = build_parser().parse_args([])
     assert args.narration == "none"
     assert (args.voice, args.narration_speed) == ("bm_george", 1.25)
+
+
+def test_captions_group_words_and_highlight_each_spoken_word(tmp_path):
+    w = lambda word, start, end, scene="sc01": {"word": word, "start": start, "end": end, "scene_id": scene}  # noqa: E731
+    words = [w("a", 0.0, 0.2), w("b", 0.2, 0.4), w("c", 0.4, 0.6), w("d", 0.6, 0.8),  # 4th word -> new chunk
+             w("e", 2.0, 2.2),                                                       # long pause -> new chunk
+             w("f", 2.2, 2.4, "sc02")]                                               # new scene -> new chunk
+    assert [[x["word"] for x in c] for c in tts.caption_chunks(words)] == [["a", "b", "c"], ["d"], ["e"], ["f"]]
+
+    ass = tts.write_captions(words, tmp_path / "c.ass", 1080, 1920).read_text(encoding="utf-8")
+    events = [line for line in ass.splitlines() if line.startswith("Dialogue:")]
+    assert len(events) == len(words)
+    assert "0:00:00.00,0:00:00.20" in events[0] and r"{\c&H0000D7FF&}A{\c&H00FFFFFF&} B C" in events[0]
+    assert "0:00:00.40,0:00:00.60" in events[2]       # caption held to the next chunk's start (short gap)
+    assert "0:00:00.60,0:00:00.80" in events[3]       # not held across the long pause
+    assert "PlayResY: 1920" in ass and r"\pos(540,864)" in events[0]

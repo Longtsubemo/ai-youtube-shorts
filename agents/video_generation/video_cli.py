@@ -125,6 +125,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--voice", default=DEFAULT_VOICE, help=f"Kokoro voice (default: {DEFAULT_VOICE})")
     parser.add_argument("--narration-speed", type=float, default=DEFAULT_SPEED,
                         help=f"Kokoro speaking speed (default: {DEFAULT_SPEED})")
+    parser.add_argument("--no-captions", action="store_true",
+                        help="with --narration, skip the burned-in word captions")
     parser.add_argument("--tts-python", default=None,
                         help="Python 3.12 with kokoro installed (default: KOKORO_PYTHON or .venv-tts)")
     return parser
@@ -168,6 +170,7 @@ def main(argv: list[str] | None = None) -> int:
             narration_voice=args.voice if args.narration == "kokoro" else None,
             narration_speed=args.narration_speed,
             tts_python=args.tts_python,
+            captions=not args.no_captions,
         )
     except VideoGenerationError as exc:
         print(f"[video_generation] input error: {exc}")

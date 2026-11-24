@@ -137,6 +137,7 @@ def run_video_generation(
     narration_voice: str | None = None,
     narration_speed: float = tts.DEFAULT_SPEED,
     tts_python: str | Path | None = None,
+    captions: bool = True,
 ) -> VideoResult:
     """Translate, render, assemble and write every Stage 5 artifact."""
     run_dir = Path(run_dir)
@@ -162,12 +163,15 @@ def run_video_generation(
         plan = tts.fit_plan_to_narration(plan, timing, fps)
         track = tts.build_narration_track(tts_dir, plan, run_dir / "video" / "narration.wav")
         words_path = run_dir / "video" / "narration.json"
+        words = tts.word_timeline(timing, plan)
         words_path.write_text(json.dumps({
-            "voice": narration_voice, "speed": narration_speed,
-            "words": tts.word_timeline(timing, plan)}, indent=2), encoding="utf-8")
+            "voice": narration_voice, "speed": narration_speed, "words": words}, indent=2), encoding="utf-8")
+        captions_path = (tts.write_captions(words, run_dir / "video" / "narration.ass", width, height)
+                         if captions else None)
         narration_info = {
             "engine": "kokoro", "voice": narration_voice, "speed": narration_speed,
             "track": str(track), "words": str(words_path),
+            "captions": str(captions_path) if captions_path else None,
             "scene_seconds": {sc.scene_id: {"planned": planned[sc.scene_id], "narrated": sc.duration_seconds}
                               for sc in plan.scenes},
         }
@@ -206,7 +210,7 @@ def run_video_generation(
     final_path = Path(result.final_video)
     if narration_info:
         narrated = final_path.with_name("final_narrated.mp4")
-        tts.mux_narration(final_path, Path(narration_info["track"]), narrated, ffmpeg)
+        tts.mux_narration(final_path, Path(narration_info["track"]), narrated, ffmpeg, captions=captions_path)
         narrated.replace(final_path)
         result.notes["narration"] = narration_info
     video_path = run_dir / "video.mp4"
