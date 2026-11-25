@@ -70,7 +70,7 @@ from tests.gemini_test_utils import FakeRawClient, make_client
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = ROOT / "config" / "topic_selection.yaml"
 MOCK_CANDIDATES = ROOT / "data" / "mock" / "topic_candidates.json"
-PROMPT_PATH = ROOT / "prompts" / "script" / "short_script-v2.txt"
+PROMPT_PATH = ROOT / "prompts" / "script" / "short_script-v3.txt"
 
 # Phrasings a real script must never contain (personalized-advice directives).
 FORBIDDEN_NARRATION = (
@@ -866,7 +866,7 @@ class TestPrompt:
 
     def test_prompt_requires_sections_and_hook_payoff(self):
         prompt = PROMPT_PATH.read_text(encoding="utf-8").lower()
-        assert "3-6 ordered segments" in prompt
+        assert "one segment per role of the narrative format" in prompt
         assert "curiosity in the first sentence" in prompt
         assert "payoff or reveal" in prompt
 
@@ -1013,6 +1013,8 @@ class TestPromptWordBudget:
         assert "style, not a mandatory formula" in prompt
         assert "{narrative_format}" in prompt
         assert len(NARRATIVE_FORMATS) >= 5
+        assert all("Opening move" in f and "Section roles, in this order:" in f for f in NARRATIVE_FORMATS)
+        assert "exactly the listed roles" in prompt
         assert narrative_format_for("t_a") == narrative_format_for("t_a")  # stable per topic
         used = {narrative_format_for(f"t_{i}") for i in range(50)}
         assert len(used) >= 5  # topics spread across formats
@@ -1025,7 +1027,7 @@ class TestPromptWordBudget:
 
     def test_word_budget_did_not_disturb_structure_requirements(self):
         prompt = self._prompt()
-        assert "3-6 ordered segments" in prompt
+        assert "one segment per role of the narrative format" in prompt
         assert "curiosity in the first sentence" in prompt
         assert "payoff or reveal" in prompt
         assert "never invent a figure" in prompt

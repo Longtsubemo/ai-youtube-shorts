@@ -59,21 +59,25 @@ def write_script(script: Script, out_path: str | Path) -> Path:
 
 # Rotated per topic so the channel's videos do not share one structure
 # (YouTube's inauthentic-content policy targets templated, repetitive uploads).
-NARRATIVE_FORMATS: tuple[str, ...] = (
-    "Myth-buster: state a popular belief about the topic, then take it apart step by step and "
-    "end on what is actually true.",
-    "Case file: tell it as a short detective case - a puzzling clue, the investigation, and the "
-    "culprit revealed at the end.",
-    "Story: follow one ordinary, fictional person through a concrete situation; the concept "
-    "emerges from what happens to them.",
-    "Comparison: put two choices, people or paths side by side and reveal why they end up in "
-    "very different places.",
-    "Counterintuitive reveal: open with a surprising claim that sounds wrong, then show the "
-    "mechanism that makes it right.",
-    "What-if chain: ask one 'what happens if' question and walk the chain of consequences to its "
-    "end.",
-    "Breakdown: take one everyday thing apart piece by piece, like a mechanic opening an engine, "
-    "and show the hidden part that matters.",
+NARRATIVE_FORMATS: tuple[str, ...] = tuple(
+    f"{name}: {idea}\nOpening move (the first sentence): {opening}\n"
+    f"Section roles, in this order: {', '.join(beats)}"
+    for name, idea, opening, beats in (
+        ("Myth-buster", "take a popular belief about the topic apart and end on what is actually true.",
+         "state the myth as if it were true.", ("myth", "crack", "truth", "proof", "takeaway")),
+        ("Case file", "tell it as a short detective case that ends by naming the culprit.",
+         "present a puzzling clue or a crime scene.", ("clue", "investigation", "twist", "culprit")),
+        ("Story", "follow one ordinary, fictional person; the concept emerges from what happens to them.",
+         "introduce the person by name in a specific moment.", ("character", "choice", "consequence", "lesson")),
+        ("Comparison", "put two people, choices or paths side by side and show why they end up far apart.",
+         "name both sides in the first sentence.", ("side_a", "side_b", "divergence", "outcome", "takeaway")),
+        ("Counterintuitive reveal", "open with a claim that sounds wrong, then show the mechanism that makes it right.",
+         "the surprising claim itself, stated flatly.", ("claim", "doubt", "mechanism", "reveal")),
+        ("What-if chain", "ask one 'what happens if' question and follow its consequences to the end.",
+         "the 'what happens if' question itself.", ("question", "first_effect", "second_effect", "end_state")),
+        ("Breakdown", "take one everyday thing apart piece by piece and show the hidden part that matters.",
+         "name the everyday thing and promise to open it up.", ("object", "layer_one", "layer_two", "hidden_part", "takeaway")),
+    )
 )
 
 

@@ -31,11 +31,19 @@ is a compelling opening and a clear ending or payoff.
 # Narrative format for this video
 
 The channel rotates formats so that its videos do not all follow one template.
-Build this script around the format below. Let it shape the opening, the order
-of the beats and the payoff, and do not fall back to a generic
-"hook - explanation - takeaway" pattern.
+This script MUST use the format below:
 
 {narrative_format}
+
+- The first sentence performs the format's opening move. Do not open with a
+  scene-setting image that could start any video.
+- `sections` use exactly the listed roles, in that order, one section per role.
+  Do not use generic roles such as hook, setup, explanation or payoff.
+- Role names are labels for the JSON only. Never say them in the narration
+  ("the end state", "the clue", "side A") and do not signpost with "First,",
+  "Second," or "Finally,".
+- Unless the format is Story, do not build the opening from the research
+  `story_ideas`; use them later, if at all.
 
 Also vary your phrasing: do not open with "Have you ever", "Imagine", or
 "Picture this", and do not close with "So next time" or "Remember".
@@ -125,11 +133,10 @@ actually wrote:
 - `title`: the on-screen title for the Short.
 - `narration`: the full spoken script, 165-190 words. The sections together
   carry exactly these same words, so do not repeat or expand anything here.
-- `sections`: 3-6 ordered segments. Together their `narration` fields must
+- `sections`: one segment per role of the narrative format, in its order. Together their `narration` fields must
   contain exactly the same words as `narration` - the same script, split up.
   - `section_id`: sequential id such as "s1", "s2".
-  - `role`: what the beat does - for example hook, setup, explanation, example,
-    reveal, payoff, closing.
+  - `role`: the role name from the narrative format, exactly as written there.
   - `narration`: the exact words spoken in this segment. Never empty. All
     sections together must total 165-190 words.
   - `estimated_seconds`: this section's word count divided by 2.5, rounded to a
@@ -149,7 +156,7 @@ no code fences):
   "sections": [
     {
       "section_id": "s1",
-      "role": "hook",
+      "role": "<first role from the narrative format>",
       "narration": "<the words spoken in this segment>",
       "estimated_seconds": 14,
       "visual_hint": "<what the mascot or scene does on screen>"
