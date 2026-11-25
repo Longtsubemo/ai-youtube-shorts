@@ -123,3 +123,13 @@ def test_layout_moves_the_mascot(tmp_path):
         spec = translate_scene_plan(plan, layout=layout).to_dict()
         xs[layout] = next(e["transform"]["x"] for sc in spec["scenes"] for e in sc["elements"] if e["id"] == "mascot")
     assert xs["left"] < xs["center"] < xs["right"]
+
+
+def test_word_timeline_drops_timed_punctuation():
+    plan = _plan()
+    timing = {"scenes": [{"scene_id": "sc01", "seconds": 1.0, "words": [
+        {"word": "Money", "start": 0.0, "end": 0.3}, {"word": ".", "start": 0.3, "end": 0.4},
+        {"word": "$5", "start": 0.4, "end": 0.6}]},
+        {"scene_id": "sc02", "seconds": 1.0, "words": [{"word": ",", "start": 0.0, "end": 0.1}]}]}
+    fitted = tts.fit_plan_to_narration(plan, timing, fps=30)
+    assert [w["word"] for w in tts.word_timeline(timing, fitted)] == ["Money", "$5"]

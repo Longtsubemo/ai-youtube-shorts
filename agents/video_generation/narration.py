@@ -176,11 +176,12 @@ def mux_narration(video: Path, track: Path, out_path: Path, ffmpeg: str,
 
 
 def word_timeline(timing: dict, plan: ScenePlan) -> list[dict]:
-    """Per-word timestamps on the video timeline (for captions later)."""
+    """Per-word timestamps on the video timeline, used for captions."""
     words, start = [], 0.0
     for entry, scene in zip(timing["scenes"], plan.scenes):
+        # Kokoro gives some punctuation tokens ("." ",") timestamps too; they are not words.
         words += [{**w, "start": round(start + w["start"], 3), "end": round(start + w["end"], 3),
-                   "scene_id": scene.scene_id} for w in entry["words"]]
+                   "scene_id": scene.scene_id} for w in entry["words"] if any(c.isalnum() for c in w["word"])]
         start += scene.duration_seconds
     return words
 
