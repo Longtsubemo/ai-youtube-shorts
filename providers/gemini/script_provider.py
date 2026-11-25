@@ -31,8 +31,8 @@ from agents.seo.config import TopicSelectionConfig
 from providers.gemini.client import GeminiClient
 from providers.gemini.errors import GeminiSchemaValidationError
 
-PROMPT_VERSION = "script/short_script-v3"
-DEFAULT_PROMPT_PATH = Path("prompts") / "script" / "short_script-v3.txt"
+PROMPT_VERSION = "script/short_script-v4"
+DEFAULT_PROMPT_PATH = Path("prompts") / "script" / "short_script-v4.txt"
 GENERATED_BY = "gemini_script_provider_v1"
 
 

@@ -70,7 +70,7 @@ from tests.gemini_test_utils import FakeRawClient, make_client
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = ROOT / "config" / "topic_selection.yaml"
 MOCK_CANDIDATES = ROOT / "data" / "mock" / "topic_candidates.json"
-PROMPT_PATH = ROOT / "prompts" / "script" / "short_script-v3.txt"
+PROMPT_PATH = ROOT / "prompts" / "script" / "short_script-v4.txt"
 
 # Phrasings a real script must never contain (personalized-advice directives).
 FORBIDDEN_NARRATION = (
@@ -937,6 +937,7 @@ class TestPromptWordBudget:
     def test_prompt_derives_seconds_from_words(self):
         prompt = self._prompt()
         assert "word count / 2.5" in prompt
+        assert "hard floor: 165 words" in prompt.lower() and "count the words in `narration`" in prompt
         assert "derive seconds from" in prompt.lower()
 
     def test_prompt_requires_estimated_seconds_to_be_computed_not_guessed(self):

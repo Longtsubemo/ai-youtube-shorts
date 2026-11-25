@@ -102,6 +102,14 @@ them.
   second** (roughly 150 words per minute). At that pace 165-190 words is
   around 66-76 seconds, which sits inside the {target_duration_seconds}-second
   target and clearly above the {duration_min_seconds}-second floor.
+- **Hard floor: 165 words.** Scripts written from this prompt have repeatedly
+  come back at 125-155 words, which makes the video too short. Before you
+  answer, count the words in `narration`. If the count is under 165, add
+  another concrete detail, example or consequence that serves the format (never
+  filler or repetition) and count again. Only answer once it is 165-190.
+- **Per-section floor:** with 4 sections, every section needs at least 42
+  words; with 5 sections, at least 34. A one- or two-sentence section is too
+  short.
 - Count the words once, across the whole script. The `sections` **split** that
   same narration; they do not add words to it and nothing may be repeated
   between `narration` and the sections.
@@ -115,7 +123,7 @@ Per section, take your share of the total and compute timing from the words you
 actually wrote:
 
 - aim for roughly `total words / number of sections` words per section, letting
-  the hook and the payoff run a little longer than the middle
+  the first and last sections run a little longer than the middle
 - `estimated_seconds` = that section's word count / 2.5, rounded to a whole
   second
 - the `estimated_seconds` values should add up to a total between 65 and 80
