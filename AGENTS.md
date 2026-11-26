@@ -550,7 +550,7 @@ Observed on branch `feat/colab-handoff-integration`. Re-verify rather than trust
 | `config/` | `channel.py` and `topic_selection.yaml`. |
 | `docs/` | Design docs and contracts; `ARCHITECTURE.md` and `PROJECT_PROGRESS.md`. Some docs are historical. |
 | `experiments/` | Isolated experiments, including `experiments/retrieval/` (not production). |
-| `tools/`, `notebooks/` | Colab handoff CLI and notebook generator. |
+| `tools/`, `notebooks/` | Colab handoff CLI and notebook generator. `tools/colab_cli_run.py --run-id <id> [--authorize-import]` runs the image worker headless on a free Colab T4 via Google's Colab CLI (installed in WSL `Ubuntu` at `~/.colab-cli-venv`; Linux-only tool). |
 | `tests/` | `pytest` suite. Run with `python -m pytest -q`. |
 | `reports/` | Per-task reports, one file per task, named after the report title. Gitignored. |
 | `data/` | Per-run artifacts, mostly gitignored; contains legacy layout directories. |
