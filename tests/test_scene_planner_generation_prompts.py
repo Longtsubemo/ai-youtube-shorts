@@ -43,9 +43,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 REAL_PLAN_PATH = REPO_ROOT / "data" / "e2e-20261005-stage4-live-01" / "scene_plan.json"
 
 STYLE_FRAGMENTS = (
-    "hand-drawn financial editorial illustration",
+    "hand-drawn ink illustration",
     "dark ink outlines",
-    "warm paper and wood",
+    "warm wood and stone",
     "muted brown and beige tones",
     "subtle blue accents",
 )

@@ -66,9 +66,11 @@ class ChannelConfig:
     tone: str = "Friendly + educational"
     format: str = "YouTube Shorts"
     target_duration_seconds: int = 70
+    # No "paper"/"editorial": those words pulled documents and bookshelves into
+    # every background (v3 frames, 2026-11-28).
     image_style: str = (
-        "hand-drawn financial editorial illustration, dark ink outlines, "
-        "warm paper and wood, muted brown and beige tones, subtle blue accents"
+        "hand-drawn ink illustration, dark ink outlines, warm wood and stone, "
+        "muted brown and beige tones, subtle blue accents, clean background"
     )
     mascot: MascotConfig = field(default_factory=MascotConfig)
 

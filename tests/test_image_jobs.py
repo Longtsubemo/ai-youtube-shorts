@@ -291,7 +291,7 @@ def test_real_live_plan_converts_cleanly():
     # the 75-token hard ceiling (warnings only, no errors).
     assert batch.warnings != []
     assert {w["code"] for w in batch.warnings} == {"ij03"}
-    assert batch.channel_image_style == CHANNEL_IMAGE_STYLE
+    assert batch.channel_image_style == plan.channel_image_style  # a saved plan keeps its own style
     assert batch.schema == "image-jobs/1.0"
     for job in batch.jobs:
         est = estimate_clip_tokens(job.positive_prompt)
