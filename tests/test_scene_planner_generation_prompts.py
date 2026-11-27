@@ -499,3 +499,14 @@ def test_historical_live_plan_prompts_no_longer_pass():
     validation = validate_scene_plan_generation(historical)
     assert not validation.passed
     assert any(issue.code == "gp04" for issue in validation.errors)
+
+
+def test_scene_prompt_v3_steers_subjects_away_from_text_money_and_people():
+    from providers.gemini.scene_planner_provider import DEFAULT_PROMPT_PATH, PROMPT_VERSION
+
+    assert PROMPT_VERSION == "scene_planner/short_scene-v3" and DEFAULT_PROMPT_PATH.is_file()
+    text = DEFAULT_PROMPT_PATH.read_text(encoding="utf-8")
+    assert "ignores the" in text and "solid, inanimate physical object" in text
+    for banned in ("statements", "price tags", "banknotes", "screens", "silhouettes", "shadows"):
+        assert banned in text
+    assert "ledger on a plain desk" not in text  # the old example invited fake text

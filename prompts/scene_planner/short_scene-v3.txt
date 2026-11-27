@@ -55,7 +55,7 @@ Structure: "[one primary subject], [simple composition]". Add at most ONE
 supporting object, and only when it is genuinely necessary to read the scene.
 
 Example:
-"An open ledger on a plain desk. Centered, plenty of empty space."
+"A ceramic piggy bank on a plain wooden shelf. Centered, plenty of empty space."
 
 - Target about 8-15 words. This is well inside the 25-55 estimated CLIP-token
   target and far below the 70-token hard limit. ONE short sentence.
@@ -77,6 +77,29 @@ Example:
   narrator carries all information); photorealism, 3D render, animation, video
   or any motion; camera moves (push in, tracking shot, pan, zoom, camera);
   long style-adjective lists or the channel image style block.
+
+# Choosing the primary subject (the image model ignores "avoid" lists)
+The image model draws whatever the subject invites and largely ignores the
+negative prompt. So a subject that usually carries writing or a face WILL get
+fake text or a person, however it is phrased ("blank", "plain", "no text").
+Pick the subject so the problem cannot arise:
+- The primary subject is ALWAYS a solid, inanimate physical object or a simple
+  place (door, shelf, staircase, bridge, empty road).
+- NEVER use paper or anything usually printed or written on: documents,
+  statements, receipts, bills, letters, contracts, ledgers, open books,
+  newspapers, price tags, labels, signs, calendars, menus, maps, forms.
+- NEVER use money that carries portraits or print: banknotes, cash, cheques,
+  credit cards, stock certificates. A plain coin or a closed wallet is fine.
+- NEVER use screens or displays: phones, monitors, dashboards, charts, graphs,
+  tickers, calculators.
+- NEVER use anything that implies a person: people, crowds, hands, faces,
+  silhouettes, shadows, reflections, footprints, clothing being worn, statues.
+- Express an abstract idea through an object instead: shrinking value -> a
+  melting ice cube or a deflating balloon; time -> an hourglass; risk -> a
+  cracked egg or a thin rope; safety -> a closed steel vault or a padlock;
+  growth -> a young plant in a pot; balance -> a brass scale; a trap -> a
+  mousetrap; savings -> a glass jar of coins.
+- Prefer plain textured backgrounds (wood, stone, plaster, brick).
 
 # Visual guidance
 Create simple, production-friendly scenes built around ONE clear primary subject

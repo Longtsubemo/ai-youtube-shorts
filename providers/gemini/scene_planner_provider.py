@@ -21,8 +21,8 @@ from agents.seo.config import TopicSelectionConfig
 from providers.gemini.client import GeminiClient
 from providers.gemini.errors import GeminiSchemaValidationError
 
-PROMPT_VERSION = "scene_planner/short_scene-v2"
-DEFAULT_PROMPT_PATH = Path("prompts") / "scene_planner" / "short_scene-v2.txt"
+PROMPT_VERSION = "scene_planner/short_scene-v3"
+DEFAULT_PROMPT_PATH = Path("prompts") / "scene_planner" / "short_scene-v3.txt"
 
 
 class MascotSchema(BaseModel):
@@ -155,6 +155,12 @@ class GeminiScenePlannerProvider:
             "arrangements. Never put narration, the mascot, people, readable text, "
             "photorealism, 3D render, animation, video, camera moves or the "
             "channel style block into a generation_prompt. "
+            "The image model ignores negative prompts, so the primary subject must be a "
+            "solid inanimate object or simple place: never paper or anything printed "
+            "(documents, statements, receipts, price tags, signs, calendars, books), "
+            "never banknotes, cards or cheques, never screens or charts, and never "
+            "anything implying a person (silhouettes, shadows, hands, statues). "
+            "Show abstract ideas through an object (melting ice cube, hourglass, padlock). "
             "Return JSON only."
         )
 
